@@ -1,0 +1,422 @@
+{% extends 'base.html' %}
+{% block title %}FTP Curve — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout-3 { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; align-items: start; }
+.panel-left { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.items-list { display: flex; flex-direction: column; gap: 0.3rem; max-height: 220px; overflow-y: auto; }
+.item-row {
+  display: grid; align-items: center; gap: 0.3rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.3rem 0.5rem; font-size: 0.67rem;
+  grid-template-columns: 1fr 45px 50px 55px 45px 22px;
+}
+.item-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-num  { text-align: right; font-variant-numeric: tabular-nums; font-size: 0.63rem; }
+.type-badge { font-size: 0.56rem; border-radius: 3px; padding: 1px 5px; text-align: center; font-weight: 600; }
+.type-loan    { background: var(--accent-glow); color: var(--accent); }
+.type-deposit { background: var(--green-dim);   color: var(--green); }
+.item-remove  { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; }
+.item-remove:hover { color: var(--red); }
+.add-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 2; }
+
+/* FTP Curve table */
+.ftp-curve-table { width: 100%; border-collapse: collapse; }
+.ftp-curve-table th {
+  font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.07em;
+  color: var(--text-muted); font-weight: 400; padding: 0.35rem 0.75rem;
+  border-bottom: 1px solid var(--border); text-align: left;
+}
+.ftp-curve-table td { padding: 0.45rem 0.75rem; border-bottom: 1px solid var(--border-soft); font-size: 0.72rem; }
+.ftp-curve-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.ftp-curve-table tr:hover td { background: var(--surface); }
+
+/* NIM decomposition stacked bar */
+.nim-stack { display: flex; height: 28px; border-radius: var(--radius); overflow: hidden; width: 100%; }
+.nim-seg { display: flex; align-items: center; justify-content: center; font-size: 0.6rem; font-weight: 500; transition: width 0.4s; overflow: hidden; white-space: nowrap; }
+.nim-seg-base   { background: var(--panel);     color: var(--text-muted); }
+.nim-seg-lp     { background: var(--accent);    color: #fff; }
+.nim-seg-opt    { background: var(--gold);      color: #000; }
+.nim-seg-client { background: var(--green);     color: #fff; }
+
+/* Instrument detail table */
+.inst-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.inst-table th {
+  text-align: left; padding: 0.35rem 0.5rem;
+  color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase;
+  letter-spacing: 0.06em; border-bottom: 1px solid var(--border); font-weight: 400;
+}
+.inst-table td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); }
+.inst-table tr:hover td { background: var(--surface); color: var(--text); }
+.inst-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.inst-table .pos { color: var(--green); }
+.inst-table .neg { color: var(--red); }
+
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+
+/* LP override inputs */
+.lp-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0.3rem; }
+.lp-bucket { text-align: center; }
+.lp-bucket-label { font-size: 0.58rem; color: var(--text-muted); text-align: center; margin-bottom: 0.2rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>FTP Curve <span class="badge badge-blue" style="font-size:0.6rem;vertical-align:middle">TR</span></h1>
+      <p>Funds Transfer Pricing — TCMB/TLREF base rate, liquidity premium term structure, optionality charges, NIM decomposition</p>
+    </div>
+  </div>
+</div>
+
+<div class="layout-3">
+
+  <!-- ══ LEFT ══ -->
+  <div class="panel-left">
+
+    <div class="card">
+      <div class="card-title">Parameters</div>
+      <div class="add-form">
+        <div class="form-group full">
+          <label class="form-label">Base Rate (%) <span style="color:var(--text-muted);font-weight:400">— TCMB overnight</span></label>
+          <input class="form-input" id="baseRate" type="number" step="0.25" value="45.0"/>
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="trToggle" checked onchange="updateContext(this)"/><span class="toggle-slider"></span></label>
+        <span class="toggle-label" id="trLabel">Turkish Context (TCMB rates)</span>
+      </div>
+      <div style="margin-top:0.75rem">
+        <div class="card-title" style="margin-bottom:0.6rem">Liquidity Premium Term Structure (bps)</div>
+        <div class="lp-grid" id="lpGrid"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Instruments</div>
+      <div style="display:grid;grid-template-columns:1fr 45px 50px 55px 45px 22px;gap:0.3rem;padding:0 0 0.4rem;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">
+        <span>Name</span><span style="text-align:right">Type</span><span style="text-align:right">Amt</span><span style="text-align:right">Client%</span><span style="text-align:right">Tenor</span><span></span>
+      </div>
+      <div class="items-list" id="itemsList"></div>
+      <hr class="sep"/>
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="iName" placeholder="e.g. SME Loans 12M"/></div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-select" id="iType"><option value="loan">Loan</option><option value="deposit">Deposit</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="iAmt" type="number" placeholder="500"/></div>
+        <div class="form-group"><label class="form-label">Client Rate (%)</label><input class="form-input" id="iRate" type="number" step="0.01" placeholder="48.0"/></div>
+        <div class="form-group"><label class="form-label">Tenor (months)</label><input class="form-input" id="iTenor" type="number" placeholder="12"/></div>
+        <div class="form-group">
+          <label class="form-label">Optionality</label>
+          <select class="form-select" id="iOpt"><option value="false">None</option><option value="true">Yes (+opt charge)</option></select>
+        </div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addItem()">+ Add Instrument</button></div>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:0.4rem">
+      <button class="btn btn-primary w-full" onclick="runAnalysis()">▶ Run FTP Analysis</button>
+      <button class="btn btn-ghost  w-full" onclick="loadSample()">Load Sample Portfolio</button>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT ══ -->
+  <div id="resultsPanel">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">🔄</div>
+      <h2>FTP Curve</h2>
+      <p>Add instruments with client rates and tenor, set TCMB base rate, then run to see FTP pricing and full NIM decomposition.</p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let items = [];
+
+// LP defaults (Turkish context)
+const LP_TR      = {Overnight:0, '1M':30, '3M':60, '6M':100, '1Y':150, '2Y':220, '5Y+':350};
+const LP_GENERIC = {Overnight:0, '1M':10, '3M':20, '6M':35,  '1Y':50,  '2Y':75,  '5Y+':120};
+const BUCKETS    = ['Overnight','1M','3M','6M','1Y','2Y','5Y+'];
+let isTurkish    = true;
+
+// Init LP grid
+function initLPGrid(lp) {
+  const el = document.getElementById('lpGrid');
+  el.innerHTML = BUCKETS.map(b => `
+    <div class="lp-bucket">
+      <div class="lp-bucket-label">${b}</div>
+      <input class="form-input" id="lp_${b}" type="number" value="${lp[b]||0}"
+             style="text-align:center;padding:0.3rem 0.2rem;font-size:0.68rem"/>
+    </div>`).join('');
+}
+
+function getLPValues() {
+  const lp = {};
+  BUCKETS.forEach(b => { lp[b] = parseInt(document.getElementById('lp_' + b)?.value || 0); });
+  return lp;
+}
+
+function updateContext(el) {
+  isTurkish = el.checked;
+  document.getElementById('trLabel').textContent = isTurkish ? 'Turkish Context (TCMB rates)' : 'Generic (International)';
+  document.getElementById('baseRate').value = isTurkish ? '45.0' : '5.25';
+  initLPGrid(isTurkish ? LP_TR : LP_GENERIC);
+}
+
+function addItem() {
+  const name  = document.getElementById('iName').value.trim();
+  const type  = document.getElementById('iType').value;
+  const amt   = parseFloat(document.getElementById('iAmt').value);
+  const rate  = parseFloat(document.getElementById('iRate').value);
+  const tenor = parseFloat(document.getElementById('iTenor').value);
+  const opt   = document.getElementById('iOpt').value === 'true';
+  if (!name || isNaN(amt) || isNaN(rate) || isNaN(tenor)) { alert('Fill all fields.'); return; }
+  items.push({name, type, amount:amt, client_rate:rate, tenor_months:tenor, has_optionality:opt});
+  renderList();
+  ['iName','iAmt','iRate','iTenor'].forEach(id => document.getElementById(id).value='');
+}
+
+function removeItem(i) { items.splice(i,1); renderList(); }
+
+function renderList() {
+  const el = document.getElementById('itemsList');
+  if (!items.length) { el.innerHTML='<div class="text-muted" style="font-size:0.7rem;padding:0.3rem">No instruments added</div>'; return; }
+  el.innerHTML = items.map((it,i) => `
+    <div class="item-row">
+      <span class="item-name" title="${it.name}">${it.name}</span>
+      <span class="type-badge type-${it.type}">${it.type==='loan'?'Loan':'Dep'}</span>
+      <span class="item-num" style="color:var(--accent)">${it.amount.toLocaleString()}</span>
+      <span class="item-num">${it.client_rate}%</span>
+      <span class="item-num">${it.tenor_months}M</span>
+      <button class="item-remove" onclick="removeItem(${i})">✕</button>
+    </div>`).join('');
+}
+
+function loadSample() {
+  items = [
+    {name:'Floating Corp Loans',   type:'loan',    amount:2000, client_rate:48.0, tenor_months:1,  has_optionality:false},
+    {name:'Fixed SME Loans 12M',   type:'loan',    amount:1500, client_rate:47.0, tenor_months:12, has_optionality:false},
+    {name:'Fixed Mortgage 5Y',     type:'loan',    amount:800,  client_rate:43.5, tenor_months:60, has_optionality:true},
+    {name:'Syndicated Corp 2Y',    type:'loan',    amount:600,  client_rate:46.0, tenor_months:24, has_optionality:false},
+    {name:'Demand Deposits',       type:'deposit', amount:1800, client_rate:12.0, tenor_months:1,  has_optionality:false},
+    {name:'Time Deposits 3M',      type:'deposit', amount:2200, client_rate:42.0, tenor_months:3,  has_optionality:false},
+    {name:'Time Deposits 12M',     type:'deposit', amount:1000, client_rate:40.5, tenor_months:12, has_optionality:false},
+    {name:'Wholesale Funding 2Y',  type:'deposit', amount:500,  client_rate:44.0, tenor_months:24, has_optionality:false},
+  ];
+  renderList();
+  document.getElementById('baseRate').value = '45.0';
+  document.getElementById('trToggle').checked = true;
+  isTurkish = true;
+  initLPGrid(LP_TR);
+}
+
+async function runAnalysis() {
+  if (!items.length) { alert('Add instruments or use Load Sample.'); return; }
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Building FTP curve and pricing instruments...</div>';
+  try {
+    const resp = await fetch('/api/ftp/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        base_rate:       parseFloat(document.getElementById('baseRate').value),
+        turkish_context: isTurkish,
+        liquidity_premia: getLPValues(),
+        items,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderResults(d);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderResults(d) {
+  const nim  = d.nim_decomp;
+  const base = d.base_rate_pct;
+
+  // FTP Curve table
+  const curveRows = Object.entries(d.ftp_curve).map(([bucket, cv]) => `
+    <tr>
+      <td>${bucket}</td>
+      <td class="r">${cv.base_rate_pct.toFixed(2)}%</td>
+      <td class="r" style="color:var(--accent)">+${cv.lp_bps}bps</td>
+      <td class="r" style="color:var(--gold)">+${cv.opt_bps}bps</td>
+      <td class="r" style="color:var(--green);font-weight:500">${cv.ftp_rate_pct.toFixed(3)}%</td>
+      <td class="r" style="color:var(--text-muted)">${cv.ftp_rate_full_pct.toFixed(3)}%</td>
+    </tr>`).join('');
+
+  // NIM decomposition
+  const totalBps = nim.client_margin_bps + nim.alm_lp_bps + nim.alm_opt_bps + base;
+  const pctBase   = (base                  / totalBps * 100).toFixed(1);
+  const pctLP     = (nim.alm_lp_bps        / totalBps * 100).toFixed(1);
+  const pctOpt    = (nim.alm_opt_bps       / totalBps * 100).toFixed(1);
+  const pctClient = (nim.client_margin_bps / totalBps * 100).toFixed(1);
+
+  // Instrument rows
+  const instRows = d.items.map(it => {
+    const margin_cls = it.client_margin_bps >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td>${it.name}</td>
+      <td><span class="type-badge type-${it.type}">${it.type==='loan'?'Loan':'Dep'}</span></td>
+      <td class="r">${fmt(it.amount)}M</td>
+      <td class="r">${it.tenor_months}M</td>
+      <td class="r">${it.bucket}</td>
+      <td class="r">${it.client_rate_pct.toFixed(2)}%</td>
+      <td class="r" style="color:var(--green)">${it.ftp_rate_pct.toFixed(3)}%</td>
+      <td class="r ${margin_cls}">${it.client_margin_bps >= 0 ? '+' : ''}${it.client_margin_bps}bps</td>
+      <td class="r" style="color:var(--accent)">${it.alm_lp_bps}bps</td>
+      <td class="r" style="color:var(--text-dim)">${fmt(it.nim_contribution_m)}M</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('resultsPanel').innerHTML = `
+
+    <!-- KPIs -->
+    <div class="kpi-strip">
+      <div class="stat-box">
+        <div class="stat-label">Base Rate (TCMB)</div>
+        <div class="stat-value">${base.toFixed(2)}%</div>
+        <div class="stat-sub">${d.turkish_context?'TCMB overnight':'Generic base'}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Client NIM</div>
+        <div class="stat-value positive">${nim.client_margin_bps}bps</div>
+        <div class="stat-sub">Business unit margin</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">ALM Liquidity Premium</div>
+        <div class="stat-value" style="color:var(--accent)">${nim.alm_lp_bps}bps</div>
+        <div class="stat-sub">Captured by ALM desk</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total NIM</div>
+        <div class="stat-value positive">${nim.total_nim_bps}bps</div>
+        <div class="stat-sub">${fmt(nim.total_nim_m)}M annual</div>
+      </div>
+    </div>
+
+    <!-- NIM Stack -->
+    <div class="card mb-2">
+      <div class="card-title">NIM Decomposition — Portfolio Weighted Average</div>
+      <div class="nim-stack mb-1" style="margin-bottom:0.6rem">
+        <div class="nim-seg nim-seg-base"   style="width:${pctBase}%">Base ${base.toFixed(0)}%</div>
+        <div class="nim-seg nim-seg-lp"     style="width:${pctLP}%">LP +${nim.alm_lp_bps}bps</div>
+        <div class="nim-seg nim-seg-opt"    style="width:${pctOpt}%">${nim.alm_opt_bps > 0 ? 'Opt +'+nim.alm_opt_bps+'bps' : ''}</div>
+        <div class="nim-seg nim-seg-client" style="width:${pctClient}%">Client +${nim.client_margin_bps}bps</div>
+      </div>
+      <div style="display:flex;gap:1.5rem;font-size:0.68rem;flex-wrap:wrap">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--panel);border:1px solid var(--border);border-radius:2px;margin-right:4px"></span>Base rate (paid to TCMB)</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--accent);border-radius:2px;margin-right:4px"></span>Liquidity premium → ALM</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--gold);border-radius:2px;margin-right:4px"></span>Optionality → ALM</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--green);border-radius:2px;margin-right:4px"></span>Client margin → Business</span>
+      </div>
+    </div>
+
+    <!-- FTP Curve + Chart -->
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">FTP Curve by Tenor</div>
+        <table class="ftp-curve-table">
+          <thead><tr>
+            <th>Tenor</th><th class="r">Base</th><th class="r" style="color:var(--accent)">LP</th>
+            <th class="r" style="color:var(--gold)">Opt</th>
+            <th class="r" style="color:var(--green)">FTP Rate</th><th class="r">FTP+Opt</th>
+          </tr></thead>
+          <tbody>${curveRows}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">FTP Curve vs Base Rate</div>
+        <div class="chart-box" id="chartCurve" style="height:220px"></div>
+      </div>
+    </div>
+
+    <!-- Instrument detail -->
+    <div class="card">
+      <div class="card-title">Instrument Pricing Detail</div>
+      <div style="overflow-x:auto">
+        <table class="inst-table">
+          <thead><tr>
+            <th>Name</th><th>Type</th><th class="r">Amount</th><th class="r">Tenor</th>
+            <th class="r">Bucket</th><th class="r">Client Rate</th><th class="r">FTP Rate</th>
+            <th class="r">Client Margin</th><th class="r">ALM LP</th><th class="r">NIM (M)</th>
+          </tr></thead>
+          <tbody>${instRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- NIM chart -->
+    <div class="card mt-2">
+      <div class="card-title">NIM Contribution by Instrument</div>
+      <div class="chart-box" id="chartNIM" style="height:220px"></div>
+    </div>
+  `;
+
+  renderCharts(d);
+}
+
+function renderCharts(d) {
+  // FTP Curve chart
+  const buckets = Object.keys(d.ftp_curve);
+  const base    = buckets.map(() => d.base_rate_pct);
+  const ftp     = buckets.map(b => d.ftp_curve[b].ftp_rate_pct);
+  const ftpFull = buckets.map(b => d.ftp_curve[b].ftp_rate_full_pct);
+
+  Plotly.newPlot('chartCurve', [
+    { type:'scatter', x:buckets, y:base,    mode:'lines', name:'Base Rate',
+      line:{color:'#64748b', dash:'dot', width:1.5} },
+    { type:'scatter', x:buckets, y:ftp,     mode:'lines+markers', name:'FTP Rate',
+      line:{color:'#2563eb', width:2}, marker:{size:5} },
+    { type:'scatter', x:buckets, y:ftpFull, mode:'lines+markers', name:'FTP+Opt',
+      line:{color:'#f59e0b', width:1.5, dash:'dot'}, marker:{size:4} },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:40,l:50,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233'},
+    yaxis:{gridcolor:'#1e2233', ticksuffix:'%'},
+    legend:{font:{size:8},bgcolor:'transparent'},
+  }, {displayModeBar:false,responsive:true});
+
+  // NIM contribution chart
+  const names = d.items.map(i => i.name.length > 16 ? i.name.slice(0,14)+'…' : i.name);
+  const clientM = d.items.map(i => parseFloat((i.client_margin_bps * i.amount / 10000).toFixed(2)));
+  const almM    = d.items.map(i => parseFloat((i.alm_lp_bps * i.amount / 10000).toFixed(2)));
+
+  Plotly.newPlot('chartNIM', [
+    { type:'bar', name:'Client Margin', x:names, y:clientM,
+      marker:{color:'#10b981'} },
+    { type:'bar', name:'ALM LP Margin', x:names, y:almM,
+      marker:{color:'#2563eb'} },
+  ], {
+    barmode: 'stack',
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:80,l:50,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233',tickangle:-30,tickfont:{size:8}},
+    yaxis:{gridcolor:'#1e2233',ticksuffix:'M',title:{text:'Annual NIM (M)',font:{size:9}}},
+    legend:{font:{size:9},bgcolor:'transparent'},
+  }, {displayModeBar:false,responsive:true});
+}
+
+function fmt(v) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});
+}
+
+// Init
+initLPGrid(LP_TR);
+renderList();
+</script>
+{% endblock %}

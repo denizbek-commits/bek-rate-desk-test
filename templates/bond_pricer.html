@@ -1,0 +1,212 @@
+{% extends 'base.html' %}
+{% block title %}Bond Pricer — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: start; }
+.panel-left { display: flex; flex-direction: column; gap: 0.75rem; }
+.add-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 2; }
+.metric-row { display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.72rem; }
+.metric-label { color: var(--text-muted); }
+.metric-val   { font-family: var(--font-mono); font-weight: 500; color: var(--text); }
+.metric-val.accent { color: var(--accent); }
+.metric-val.gold   { color: var(--gold); }
+.metric-val.green  { color: var(--green); }
+.metric-val.red    { color: var(--red); }
+.cf-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.cf-table th { text-align: left; padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); font-weight: 400; }
+.cf-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); font-size: 0.68rem; }
+.cf-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.type-btn { padding: 0.3rem 0.75rem; font-size: 0.7rem; border-radius: var(--radius); border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; font-family: var(--font-mono); transition: all 0.15s; }
+.type-btn.active { background: var(--accent-glow); color: var(--accent); border-color: var(--accent); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Bond Pricer</h1>
+  <p>Fixed / floating / amortizing — YTM, DV01, modified duration, convexity, full cashflow schedule</p>
+</div>
+
+<div class="layout">
+  <div class="panel-left">
+    <div class="card">
+      <div class="card-title">Bond Parameters</div>
+
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.75rem">
+        <button class="type-btn active" id="btn-fixed"      onclick="setBondType('fixed')">Fixed Rate</button>
+        <button class="type-btn"        id="btn-floating"   onclick="setBondType('floating')">Floating</button>
+        <button class="type-btn"        id="btn-amortizing" onclick="setBondType('amortizing')">Amortizing</button>
+      </div>
+
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Bond Name (optional)</label><input class="form-input" id="bName" placeholder="e.g. 5Y Fixed Corp Bond"/></div>
+        <div class="form-group"><label class="form-label">Par Value</label><input class="form-input" id="bPar" type="number" value="1000"/></div>
+        <div class="form-group"><label class="form-label">Market Price</label><input class="form-input" id="bPrice" type="number" step="0.01" value="1000"/></div>
+        <div class="form-group"><label class="form-label" id="couponLabel">Coupon Rate (%)</label><input class="form-input" id="bCoupon" type="number" step="0.01" value="5.0"/></div>
+        <div class="form-group"><label class="form-label">Maturity (years)</label><input class="form-input" id="bYears" type="number" step="0.5" value="5.0"/></div>
+        <div class="form-group"><label class="form-label">Freq/year</label>
+          <select class="form-select" id="bFreq">
+            <option value="1">Annual</option><option value="2" selected>Semi-annual</option>
+            <option value="4">Quarterly</option><option value="12">Monthly</option>
+          </select>
+        </div>
+        <div class="form-group" id="floatRow" style="display:none"><label class="form-label">Spread over base (bps)</label><input class="form-input" id="bSpread" type="number" value="150"/></div>
+        <div class="form-group" id="baseRateRow" style="display:none"><label class="form-label">Current base rate (%)</label><input class="form-input" id="bBase" type="number" step="0.25" value="5.0"/></div>
+      </div>
+
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="priceIt()">▶ Price Bond</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadSamples()">Load Samples</button>
+    </div>
+
+    <div class="card" id="savedList" style="display:none">
+      <div class="card-title">Saved Bonds</div>
+      <div id="savedItems" style="display:flex;flex-direction:column;gap:0.3rem"></div>
+    </div>
+  </div>
+
+  <div id="resultsPanel">
+    <div class="coming-soon"><div class="coming-soon-icon">📄</div><h2>Bond Pricer</h2><p>Enter bond parameters and click Price Bond.</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let bondType = 'fixed';
+let savedBonds = [];
+
+function setBondType(t) {
+  bondType = t;
+  ['fixed','floating','amortizing'].forEach(b => document.getElementById('btn-'+b).classList.toggle('active', b===t));
+  document.getElementById('floatRow').style.display   = t==='floating'   ? '' : 'none';
+  document.getElementById('baseRateRow').style.display= t==='floating'   ? '' : 'none';
+  document.getElementById('couponLabel').textContent  = t==='floating' ? 'Quoted Spread (bps)' : 'Coupon Rate (%)';
+}
+
+function loadSamples() {
+  // Load a 5Y semi-annual fixed bond at par
+  document.getElementById('bName').value   = '5Y Fixed Corp Bond';
+  document.getElementById('bPar').value    = '1000';
+  document.getElementById('bPrice').value  = '980';
+  document.getElementById('bCoupon').value = '5.0';
+  document.getElementById('bYears').value  = '5.0';
+  document.getElementById('bFreq').value   = '2';
+  setBondType('fixed');
+}
+
+async function priceIt() {
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Pricing bond...</div>';
+  const payload = {
+    par:             parseFloat(document.getElementById('bPar').value),
+    market_price:    parseFloat(document.getElementById('bPrice').value),
+    coupon_rate:     parseFloat(document.getElementById('bCoupon').value),
+    maturity_years:  parseFloat(document.getElementById('bYears').value),
+    freq:            parseInt(document.getElementById('bFreq').value),
+    bond_type:       bondType,
+    spread_over_base:parseFloat(document.getElementById('bSpread').value || 0),
+    base_rate_current:parseFloat(document.getElementById('bBase').value || 5),
+  };
+  try {
+    const resp = await fetch('/api/bond/price', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderResults(d, document.getElementById('bName').value || 'Bond');
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderResults(d, name) {
+  const premium   = d.price > d.par ? `+${fmt2(d.price - d.par)} premium` : `${fmt2(d.price - d.par)} discount`;
+  const ytmCls    = d.ytm_pct > d.coupon_rate_pct ? 'red' : 'green';
+  const cfRows    = d.cashflows.slice(0,20).map(cf =>
+    `<tr><td class="r">${cf.period}</td><td class="r">${cf.time.toFixed(2)}Y</td><td class="r">${fmt2(cf.cashflow)}</td></tr>`).join('');
+  const hasTrunc  = d.cashflows.length > 20;
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Price</div><div class="stat-value">${fmt2(d.price)}</div><div class="stat-sub">${premium}</div></div>
+      <div class="stat-box"><div class="stat-label">YTM</div><div class="stat-value ${ytmCls}">${d.ytm_pct.toFixed(4)}%</div><div class="stat-sub">Yield to maturity</div></div>
+      <div class="stat-box"><div class="stat-label">Modified Duration</div><div class="stat-value">${d.mod_duration.toFixed(3)}Y</div><div class="stat-sub">Mac: ${d.mac_duration.toFixed(3)}Y</div></div>
+      <div class="stat-box"><div class="stat-label">DV01</div><div class="stat-value">${d.dv01.toFixed(4)}</div><div class="stat-sub">Per 1bp / ${d.par} par</div></div>
+      <div class="stat-box"><div class="stat-label">Convexity</div><div class="stat-value">${d.convexity.toFixed(3)}</div><div class="stat-sub">Second-order rate sensitivity</div></div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">${name} — Key Metrics</div>
+        <div class="metric-row"><span class="metric-label">Price</span><span class="metric-val accent">${fmt2(d.price)}</span></div>
+        <div class="metric-row"><span class="metric-label">Par</span><span class="metric-val">${fmt2(d.par)}</span></div>
+        <div class="metric-row"><span class="metric-label">Coupon rate</span><span class="metric-val">${d.coupon_rate_pct.toFixed(3)}%</span></div>
+        <div class="metric-row"><span class="metric-label">YTM</span><span class="metric-val ${ytmCls}">${d.ytm_pct.toFixed(4)}%</span></div>
+        <div class="metric-row"><span class="metric-label">Maturity</span><span class="metric-val">${d.maturity_years}Y (${d.n_periods} periods)</span></div>
+        <div class="metric-row"><span class="metric-label">Bond type</span><span class="metric-val">${d.bond_type}</span></div>
+        <hr class="sep"/>
+        <div class="metric-row"><span class="metric-label">Macaulay duration</span><span class="metric-val gold">${d.mac_duration.toFixed(4)}Y</span></div>
+        <div class="metric-row"><span class="metric-label">Modified duration</span><span class="metric-val gold">${d.mod_duration.toFixed(4)}Y</span></div>
+        <div class="metric-row"><span class="metric-label">Convexity</span><span class="metric-val">${d.convexity.toFixed(4)}</span></div>
+        <div class="metric-row"><span class="metric-label">DV01 (per 1bp)</span><span class="metric-val">${d.dv01.toFixed(6)}</span></div>
+        <div class="metric-row" style="border:none"><span class="metric-label">DV01 (% of par)</span><span class="metric-val">${d.dv01_pct_par?.toFixed(5) ?? '—'}%</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Price vs YTM Sensitivity</div>
+        <div class="chart-box" id="chartSensitivity" style="height:260px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cashflow Schedule${hasTrunc?' (first 20 periods shown)':''}</div>
+      <div style="max-height:280px;overflow-y:auto">
+        <table class="cf-table">
+          <thead><tr><th class="r">Period</th><th class="r">Time</th><th class="r">Cashflow</th></tr></thead>
+          <tbody>${cfRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+
+  renderSensitivityChart(d);
+}
+
+function renderSensitivityChart(d) {
+  const ytm_center = d.ytm_pct / 100;
+  const ytms = [];
+  const prices = [];
+  for (let dy = -0.03; dy <= 0.03; dy += 0.002) {
+    const y = ytm_center + dy;
+    if (y <= 0) continue;
+    const r = y / parseInt(document.getElementById('bFreq').value);
+    const n = d.n_periods;
+    const c = d.par * (d.coupon_rate_pct / 100) / parseInt(document.getElementById('bFreq').value);
+    let p = 0;
+    for (let i = 1; i <= n; i++) {
+      p += (c + (i===n ? d.par : 0)) / Math.pow(1 + r, i);
+    }
+    ytms.push((y * 100).toFixed(2));
+    prices.push(Math.round(p * 100) / 100);
+  }
+  Plotly.newPlot('chartSensitivity', [
+    { type:'scatter', x:ytms, y:prices, mode:'lines', line:{color:'#2563eb',width:2}, name:'Price' },
+    { type:'scatter', x:[d.ytm_pct.toFixed(2)], y:[d.price], mode:'markers',
+      marker:{color:'#f59e0b',size:10,symbol:'circle'}, name:'Current' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:40,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{title:{text:'YTM (%)',font:{size:9}},gridcolor:'#1e2233'},
+    yaxis:{title:{text:'Price',font:{size:9}},gridcolor:'#1e2233'},
+    legend:{font:{size:8},bgcolor:'transparent'},
+  }, {displayModeBar:false,responsive:true});
+}
+
+function fmt2(v) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+</script>
+{% endblock %}

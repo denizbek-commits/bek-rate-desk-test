@@ -1,0 +1,368 @@
+{% extends 'base.html' %}
+{% block title %}Yield Curve — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.chart-box   { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+.regime-pill { display:inline-flex; align-items:center; gap:0.4rem; padding:0.3rem 0.85rem; border-radius:var(--radius); font-family:var(--font-head); font-size:0.73rem; font-weight:700; letter-spacing:0.03em; }
+.steep    { background:rgba(16,185,129,.15);  color:var(--green);  border:1px solid rgba(16,185,129,.3); }
+.normal   { background:rgba(37,99,235,.15);   color:var(--accent); border:1px solid rgba(37,99,235,.3); }
+.flat     { background:rgba(245,158,11,.15);  color:var(--gold);   border:1px solid rgba(245,158,11,.3); }
+.inverted { background:rgba(239,68,68,.15);   color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.tighten  { background:rgba(239,68,68,.15);   color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.easing   { background:rgba(16,185,129,.15);  color:var(--green);  border:1px solid rgba(16,185,129,.3); }
+.onhold   { background:rgba(37,99,235,.15);   color:var(--accent); border:1px solid rgba(37,99,235,.3); }
+.pressure { background:rgba(245,158,11,.15);  color:var(--gold);   border:1px solid rgba(245,158,11,.3); }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.38rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.country-sep  { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); padding:0.35rem 0; border-bottom:1px solid var(--border); margin-bottom:0.25rem; font-weight:600; }
+.panel-flag   { font-size:1.1rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Yield Curve</h1>
+      <p>🇺🇸 US Treasury — Nelson-Siegel, rejim &nbsp;|&nbsp; 🇹🇷 TCMB faiz yapısı — ayrı panel, kendi analizi</p>
+    </div>
+    <button class="btn btn-primary" onclick="loadData()">⟳ Yenile</button>
+  </div>
+</div>
+
+<div id="mainContent">
+  <div class="loading" style="padding:3rem"><div class="spinner"></div> FRED ve TCMB EVDS verisi çekiliyor...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const TENOR_YRS = {
+  '1M':1/12,'3M':0.25,'6M':0.5,'1Y':1,'2Y':2,'5Y':5,'10Y':10,'20Y':20,'30Y':30
+};
+
+async function loadData() {
+  document.getElementById('mainContent').innerHTML =
+    '<div class="loading" style="padding:3rem"><div class="spinner"></div> FRED ve TCMB EVDS verisi çekiliyor...</div>';
+  try {
+    const resp = await fetch('/api/yield-curve/data');
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderAll(d);
+  } catch(err) {
+    document.getElementById('mainContent').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><h2>Hata</h2><p>${err.message}</p></div>`;
+  }
+}
+
+function trCurveCls(shape) {
+  if (!shape) return 'onhold';
+  const s = shape.toLowerCase();
+  if (s.includes('inverted')) return 'inverted';
+  if (s.includes('steep'))    return 'steep';
+  if (s.includes('flat'))     return 'flat';
+  if (s.includes('normal'))   return 'normal';
+  return 'onhold';
+}
+
+function regimeCls(r) {
+  if (!r) return 'onhold';
+  const ru = r.toUpperCase();
+  if (ru.includes('STEEP') || ru.includes('DIK'))      return 'steep';
+  if (ru.includes('NORMAL'))                            return 'normal';
+  if (ru.includes('FLAT') || ru.includes('DÜZ'))       return 'flat';
+  if (ru.includes('INVERT') || ru.includes('TERS'))     return 'inverted';
+  if (ru.includes('TIGHT') || ru.includes('SIKILA'))    return 'tighten';
+  if (ru.includes('EASE') || ru.includes('GEVŞE'))      return 'easing';
+  if (ru.includes('PRESSURE') || ru.includes('BASI'))   return 'pressure';
+  return 'onhold';
+}
+
+function renderAll(d) {
+  const us  = d.rates    || {};
+  const ns  = d.ns_fit   || {};
+  const tr  = d.tr       || {};
+  const trR = tr.regime  || {};
+
+  const usRegime  = d.regime   || 'Unknown';
+  const trRegime  = trR.regime || 'Bilinmiyor';
+  const usSpr     = d.spread_10y_2y ?? 0;
+
+  // US spot rate rows
+  const usRows = ['1M','3M','6M','1Y','2Y','5Y','10Y','20Y','30Y'].map(t => {
+    const v = us[t];
+    const hi = v > 5;
+    return `<div class="metric-row">
+      <span class="metric-label">${t}</span>
+      <span class="metric-val" style="color:${hi?'var(--red)':'var(--green)'}">${v != null ? v.toFixed(3)+'%' : '—'}</span>
+    </div>`;
+  }).join('');
+
+  // NS params
+  const nsBlock = ns.params ? `
+    <div class="metric-row"><span class="metric-label">β₀ — uzun dönem seviyesi</span><span class="metric-val">${ns.params.beta0.toFixed(3)}%</span></div>
+    <div class="metric-row"><span class="metric-label">β₁ — eğim (kısa vade)</span><span class="metric-val">${ns.params.beta1.toFixed(3)}%</span></div>
+    <div class="metric-row"><span class="metric-label">β₂ — eğrilik (hump)</span><span class="metric-val">${ns.params.beta2.toFixed(3)}%</span></div>
+    <div class="metric-row" style="border:none"><span class="metric-label">τ — sönüm faktörü</span><span class="metric-val">${ns.params.tau.toFixed(3)}</span></div>`
+    : '<p style="font-size:0.68rem;color:var(--text-muted)">Yeterli veri yok</p>';
+
+  // TR rate rows
+  const trRows = [
+    ['Politika Faizi (1-hafta repo)', tr.policy_rate, 'var(--gold)',   '%'],
+    ['TLREF (gecelik referans)',       tr.tlref,        'var(--gold)',   '%'],
+    ['Gecelik Borç Verme',            tr.on_lending,   'var(--text)',   '%'],
+    ['Gecelik Borç Alma',             tr.on_borrow,    'var(--text)',   '%'],
+    ['2Y Hazine Tahvili',             tr.bond_2y,      'var(--accent)', '%'],
+    ['10Y Hazine Tahvili',            tr.bond_10y,     'var(--accent)', '%'],
+    ['USD/TRY',                       tr.usdtry,       'var(--text-muted)', ''],
+    ['EUR/TRY',                       tr.eurtry,       'var(--text-muted)', ''],
+  ].map(([label, val, color, suffix]) => `
+    <div class="metric-row">
+      <span class="metric-label">${label}</span>
+      <span class="metric-val" style="color:${color}">
+        ${val != null ? val.toFixed(2)+suffix : '<span style="color:var(--text-muted)">—</span>'}
+      </span>
+    </div>`).join('');
+
+  const tlrefPremium = trR.tlref_premium;
+  const tlrefPremStr = tlrefPremium != null
+    ? `TLREF − Politika: <strong style="color:${tlrefPremium>0?'var(--gold)':'var(--green)'}">${tlrefPremium>=0?'+':''}${tlrefPremium}%</strong>`
+    : '';
+
+  document.getElementById('mainContent').innerHTML = `
+
+    <!-- ══ KPI STRIP ══ -->
+    <div class="kpi-strip">
+      <div class="stat-box">
+        <div class="stat-label">🇺🇸 US 10Y</div>
+        <div class="stat-value" style="color:var(--green)">${us['10Y']?.toFixed(3) ?? '—'}%</div>
+        <div class="stat-sub">Treasury</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">🇺🇸 10Y−2Y</div>
+        <div class="stat-value ${usSpr>=0?'positive':'negative'}">${usSpr>=0?'+':''}${usSpr.toFixed(3)}%</div>
+        <div class="stat-sub"><span class="regime-pill ${regimeCls(usRegime)}" style="font-size:0.58rem;padding:1px 6px">${usRegime}</span></div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">🇹🇷 Politika Faizi</div>
+        <div class="stat-value" style="color:var(--gold)">${tr.policy_rate?.toFixed(2) ?? '—'}%</div>
+        <div class="stat-sub">1-hafta repo</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">🇹🇷 TLREF</div>
+        <div class="stat-value" style="color:var(--gold)">${tr.tlref?.toFixed(2) ?? '—'}%</div>
+        <div class="stat-sub">Gecelik referans</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">🇹🇷 Rejim</div>
+        <div><span class="regime-pill ${regimeCls(trRegime)}" style="font-size:0.7rem">${trRegime}</span></div>
+        <div class="stat-sub" style="margin-top:3px">${tlrefPremStr}</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">USD/TRY</div>
+        <div class="stat-value accent">${tr.usdtry?.toFixed(2) ?? '—'}</div>
+      </div>
+    </div>
+
+    <!-- ══ US PANEL ══ -->
+    <div style="margin-bottom:0.4rem;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">
+      🇺🇸 United States — US Treasury Yield Curve
+    </div>
+    <div class="grid-2 mb-2" style="grid-template-columns:1fr 220px">
+      <div class="card">
+        <div class="flex-between mb-1">
+          <div class="card-title" style="margin:0">Spot Curve + Nelson-Siegel Fit</div>
+          <span class="regime-pill ${regimeCls(usRegime)}">${usRegime}</span>
+        </div>
+        <div class="chart-box" id="chartUS" style="height:260px"></div>
+      </div>
+      <div class="card">
+        <div class="country-sep">Spot Rates (FRED)</div>
+        ${usRows}
+        <div class="country-sep" style="margin-top:0.5rem">Nelson-Siegel</div>
+        ${nsBlock}
+      </div>
+    </div>
+
+    <!-- ══ TR PANEL ══ -->
+    <div style="margin-bottom:0.4rem;font-size:0.65rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">
+      🇹🇷 Türkiye — Hazine Getiri Eğrisi + TCMB Faiz Yapısı
+    </div>
+    <div class="grid-2 mb-2" style="grid-template-columns:1fr 220px">
+      <div class="card">
+        <div class="flex-between mb-1">
+          <div class="card-title" style="margin:0">TR Getiri Eğrisi — ON → 10Y</div>
+          <div style="display:flex;gap:0.5rem;align-items:center">
+            ${d.tr_curve ? `<span class="regime-pill ${trCurveCls(d.tr_curve.curve_shape)}" style="font-size:0.65rem">${d.tr_curve.curve_shape}</span>` : ''}
+            <span class="regime-pill ${regimeCls(trRegime)}" style="font-size:0.65rem">${trRegime}</span>
+          </div>
+        </div>
+        <div class="chart-box" id="chartTRCurve" style="height:200px"></div>
+        ${d.tr_curve ? `
+        <div style="display:flex;gap:0.75rem;margin-top:0.5rem;font-size:0.65rem;color:var(--text-muted)">
+          <span>10Y-2Y Spread: <strong style="color:${d.tr_curve.spread_10y_2y < 0 ? 'var(--red)' : 'var(--green)'}">${d.tr_curve.spread_label}</strong></span>
+          <span>Kaynak: ${d.tr_curve.source}</span>
+        </div>
+        ${d.tr_curve.alm_note ? `<div style="margin-top:0.4rem;font-size:0.63rem;color:var(--gold);background:rgba(245,158,11,.07);border-radius:var(--radius);padding:0.4rem 0.6rem">⚠️ ALM: ${d.tr_curve.alm_note}</div>` : ''}
+        ` : ''}
+        <div class="chart-box" id="chartTR" style="height:160px;margin-top:0.5rem"></div>
+        <div style="font-size:0.58rem;color:var(--text-muted);margin-top:0.3rem">
+          Politika Faizi + TLREF tarihsel — Kaynak: TCMB EVDS (aKPzzvHYCI) — ${tr.fetched_at || ''}
+        </div>
+      </div>
+      <div class="card">
+        <div class="country-sep">Getiri Eğrisi (TCMB EVDS)</div>
+        ${d.tr_curve ? d.tr_curve.curve.map(p => `
+          <div class="metric-row">
+            <span class="metric-label">${p.tenor}</span>
+            <span class="metric-val" style="color:${p.yield > 40 ? 'var(--red)' : p.yield > 35 ? 'var(--gold)' : 'var(--green)'}">${p.yield.toFixed(2)}%</span>
+          </div>`).join('') : ''}
+        <div class="country-sep" style="margin-top:0.5rem">TCMB Koridoru</div>
+        ${trRows}
+        <div class="country-sep" style="margin-top:0.5rem">Eğri Şekilleri</div>
+        <div style="font-size:0.65rem;color:var(--text-dim);line-height:1.8">
+          <div><span class="regime-pill inverted" style="font-size:0.56rem;padding:1px 5px;margin-right:3px">Inverted</span>Kısa &gt; Uzun — faiz indirim beklentisi</div>
+          <div><span class="regime-pill normal" style="font-size:0.56rem;padding:1px 5px;margin-right:3px">Normal</span>Uzun &gt; Kısa — büyüme beklentisi</div>
+          <div><span class="regime-pill flat" style="font-size:0.56rem;padding:1px 5px;margin-right:3px">Flat</span>Belirsizlik yüksek</div>
+        </div>
+        <hr class="sep"/>
+        <div style="font-size:0.63rem;color:var(--text-muted)">
+          <strong style="color:var(--text)">ALM Notu:</strong> Inverted eğri liability-sensitive bankalar için kısa vade fonlama baskısı yaratır. IRS receive-fixed pozisyon değerlendirin.
+        </div>
+      </div>
+    </div>`;
+
+  renderCharts(d);
+}
+
+function renderCharts(d) {
+  const us = d.rates || {};
+  const ns = d.ns_fit?.fitted || {};
+  const tr = d.tr || {};
+
+  // ── US Spot + NS ──────────────────────────────────────────────────────────
+  const usPts = ['1M','3M','6M','1Y','2Y','5Y','10Y','20Y','30Y']
+    .filter(t => us[t] != null)
+    .map(t => ({x: TENOR_YRS[t], y: us[t]}))
+    .sort((a,b) => a.x-b.x);
+
+  const nsPts = Object.entries(ns)
+    .map(([k,v]) => ({x: parseFloat(k), y: v}))
+    .filter(p => !isNaN(p.x))
+    .sort((a,b) => a.x-b.x);
+
+  const usTraces = [
+    { type:'scatter', x:usPts.map(p=>p.x), y:usPts.map(p=>p.y),
+      mode:'lines+markers', name:'Spot (FRED)',
+      line:{color:'#10b981',width:2.5}, marker:{size:8,color:'#10b981'} },
+  ];
+  if (nsPts.length) {
+    usTraces.push({
+      type:'scatter', x:nsPts.map(p=>p.x), y:nsPts.map(p=>p.y),
+      mode:'lines', name:'Nelson-Siegel',
+      line:{color:'#10b981',width:1.2,dash:'dot'}, opacity:0.65,
+    });
+  }
+
+  Plotly.newPlot('chartUS', usTraces, {
+    ...curveLayout('Getiri (%)'),
+    xaxis:{...axX('Vade (yıl)'), tickvals:[0.25,0.5,1,2,5,10,20,30],
+           ticktext:['3M','6M','1Y','2Y','5Y','10Y','20Y','30Y']},
+  }, {displayModeBar:false,responsive:true});
+
+  // ── TR Full Yield Curve ──────────────────────────────────────────────────
+  const trCurveData = d.tr_curve?.curve || [];
+  if (trCurveData.length >= 2) {
+    const curvePts = trCurveData.sort((a,b) => a.years - b.years);
+    Plotly.newPlot('chartTRCurve', [
+      { type:'scatter',
+        x: curvePts.map(p => p.years),
+        y: curvePts.map(p => p.yield),
+        mode:'lines+markers', name:'TR Getiri Eğrisi',
+        line:{color:'#f59e0b', width:2.5},
+        marker:{size:9, color: curvePts.map(p =>
+          p.yield > 40 ? '#ef4444' : p.yield > 35 ? '#f59e0b' : '#10b981'),
+          line:{color:'#fff',width:1.5}},
+        text: curvePts.map(p => `${p.tenor}: ${p.yield.toFixed(2)}%`),
+        hoverinfo:'text',
+        fill:'tozeroy', fillcolor:'rgba(245,158,11,0.05)',
+      },
+    ], {
+      paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+      margin:{t:5,b:40,l:50,r:10},
+      font:{family:'DM Mono',size:9,color:'#64748b'},
+      xaxis:{title:{text:'Vade (yıl)',font:{size:9}},gridcolor:'#1e2233',
+             tickvals: curvePts.map(p=>p.years),
+             ticktext: curvePts.map(p=>p.tenor)},
+      yaxis:{title:{text:'Getiri (%)',font:{size:9}},gridcolor:'#1e2233',ticksuffix:'%'},
+      showlegend:false,
+    },{displayModeBar:false,responsive:true});
+  }
+
+  // ── TR Policy + TLREF tarihsel çizgi ──────────────────────────────────────
+  const polSeries  = tr.policy_series  || [];
+  const tlrefSeries= tr.tlref_series   || [];
+
+  const trTraces = [];
+  if (polSeries.length) {
+    trTraces.push({
+      type:'scatter', x:polSeries.map(p=>p.date), y:polSeries.map(p=>p.value),
+      mode:'lines', name:'Politika Faizi',
+      line:{color:'#f59e0b',width:2.5}, fill:'tozeroy', fillcolor:'rgba(245,158,11,0.05)',
+    });
+  }
+  if (tlrefSeries.length) {
+    trTraces.push({
+      type:'scatter', x:tlrefSeries.map(p=>p.date), y:tlrefSeries.map(p=>p.value),
+      mode:'lines', name:'TLREF',
+      line:{color:'#fbbf24',width:1.8,dash:'dot'},
+    });
+  }
+  // Bond yields nokta olarak
+  const trYields = tr.tr_yields || {};
+  if (trYields['2Y'] || trYields['10Y']) {
+    const today = new Date().toISOString().slice(0,10);
+    if (trYields['2Y']) trTraces.push({
+      type:'scatter', x:[today], y:[trYields['2Y']],
+      mode:'markers', name:'2Y Hazine',
+      marker:{color:'#ef4444',size:12,symbol:'diamond',line:{color:'#fff',width:2}},
+    });
+    if (trYields['10Y']) trTraces.push({
+      type:'scatter', x:[today], y:[trYields['10Y']],
+      mode:'markers', name:'10Y Hazine',
+      marker:{color:'#8b5cf6',size:12,symbol:'diamond',line:{color:'#fff',width:2}},
+    });
+  }
+
+  if (trTraces.length === 0) {
+    // Fallback — sadece tek nokta
+    const today = new Date().toISOString().slice(0,10);
+    if (tr.policy_rate) trTraces.push({
+      type:'scatter', x:[today], y:[tr.policy_rate],
+      mode:'markers', name:'Politika Faizi',
+      marker:{color:'#f59e0b',size:14,symbol:'circle'},
+    });
+  }
+
+  Plotly.newPlot('chartTR', trTraces, {
+    ...curveLayout('Faiz (%)'),
+    xaxis:{...axX('Tarih'), gridcolor:'#1e2233'},
+  }, {displayModeBar:false,responsive:true});
+}
+
+function curveLayout(ytitle) {
+  return {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:8,b:45,l:52,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    yaxis:{title:{text:ytitle,font:{size:9}},gridcolor:'#1e2233',ticksuffix:'%'},
+    legend:{font:{size:9},bgcolor:'transparent',orientation:'h',y:-0.22},
+  };
+}
+function axX(title) {
+  return {title:{text:title,font:{size:9}},gridcolor:'#1e2233'};
+}
+
+loadData();
+</script>
+{% endblock %}

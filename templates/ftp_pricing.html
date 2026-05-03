@@ -1,0 +1,350 @@
+{% extends 'base.html' %}
+{% block title %}FTP Pricing — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all 0.15s; background:none; border-top:none; border-left:none; border-right:none; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.layout { display:grid; grid-template-columns:280px 1fr; gap:1rem; align-items:start; }
+.decomp-bar { display:flex; height:24px; border-radius:var(--radius); overflow:hidden; width:100%; margin:0.5rem 0; }
+.decomp-seg { display:flex; align-items:center; justify-content:center; font-size:0.58rem; font-weight:600; overflow:hidden; white-space:nowrap; }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px solid var(--border-soft); font-size:0.72rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.rec-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.rec-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.rec-table td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.rec-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.bl-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.bl-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.bl-table td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.bl-table .r { text-align:right; }
+.add-form { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.add-form .full { grid-column:span 2; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>FTP Pricing Engine</h1>
+  <p>Loan minimum pricing calculator + business line NIM decomposition — "what should this loan be priced at?"</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-pricer" onclick="switchTab('pricer')">Loan Pricer</button>
+  <button class="tab-btn"        id="tab-bl"     onclick="switchTab('bl')">Business Line P&amp;L</button>
+</div>
+
+<!-- ══ TAB 1: LOAN PRICER ══ -->
+<div id="panel-pricer">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">Loan Parameters</div>
+      <div class="form-group"><label class="form-label">Loan Type</label>
+        <select class="form-select" id="lType">
+          <option value="corporate">Corporate</option>
+          <option value="sme">SME</option>
+          <option value="mortgage">Mortgage</option>
+          <option value="consumer">Consumer</option>
+          <option value="auto">Auto</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Credit Rating</label>
+        <select class="form-select" id="lRating">
+          <option value="AAA">AAA</option><option value="AA">AA</option>
+          <option value="A">A</option><option value="BBB" selected>BBB</option>
+          <option value="BB">BB</option><option value="B">B</option>
+          <option value="CCC">CCC</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Tenor (months)</label><input class="form-input" id="lTenor" type="number" value="12"/></div>
+      <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="lAmount" type="number" value="100"/></div>
+      <hr class="sep"/>
+      <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="lBase" type="number" value="45.0" step="0.25"/></div>
+      <div class="form-group"><label class="form-label">RoE Target (%)</label><input class="form-input" id="lRoe" type="number" value="20.0"/></div>
+      <div class="form-group"><label class="form-label">OpEx (%)</label><input class="form-input" id="lOpex" type="number" value="2.5" step="0.1"/></div>
+      <div class="form-group"><label class="form-label">Capital Ratio (CET1 %)</label><input class="form-input" id="lCapital" type="number" value="12.0"/></div>
+      <div class="form-group" style="margin:0">
+        <label class="toggle-row" style="gap:0.5rem">
+          <label class="toggle"><input type="checkbox" id="lPrepay"/><span class="toggle-slider"></span></label>
+          <span class="toggle-label">Has prepayment option (+25bps)</span>
+        </label>
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:0.75rem" onclick="runPricer()">▶ Price Loan</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem"  onclick="loadPricerSamples()">Load Samples</button>
+    </div>
+
+    <div id="pricerResults">
+      <div class="coming-soon"><div class="coming-soon-icon">💰</div><h2>Loan Pricer</h2>
+      <p>Enter loan parameters to compute minimum pricing decomposed into: FTP rate + credit premium + OpEx + capital charge.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 2: BUSINESS LINE P&L ══ -->
+<div id="panel-bl" style="display:none">
+  <div class="layout">
+    <div style="display:flex;flex-direction:column;gap:0.75rem">
+      <div class="card">
+        <div class="card-title">Portfolio Items</div>
+        <div id="blList" style="display:flex;flex-direction:column;gap:0.3rem;max-height:250px;overflow-y:auto;margin-bottom:0.5rem"></div>
+        <div class="add-form">
+          <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="bl-name" placeholder="e.g. Corp Term Loan"/></div>
+          <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="bl-amt" type="number"/></div>
+          <div class="form-group"><label class="form-label">Client Rate (%)</label><input class="form-input" id="bl-cr" type="number" step="0.1"/></div>
+          <div class="form-group"><label class="form-label">FTP Rate (%)</label><input class="form-input" id="bl-ftp" type="number" step="0.1"/></div>
+          <div class="form-group"><label class="form-label">Tenor (months)</label><input class="form-input" id="bl-tenor" type="number" value="12"/></div>
+          <div class="form-group">
+            <label class="form-label">Type</label>
+            <select class="form-select" id="bl-type">
+              <option value="loan">Loan</option><option value="deposit">Deposit</option>
+            </select>
+          </div>
+          <div class="form-group full">
+            <label class="form-label">Business Line</label>
+            <select class="form-select" id="bl-line">
+              <option value="Corporate Banking">Corporate Banking</option>
+              <option value="Retail Banking">Retail Banking</option>
+              <option value="SME Banking">SME Banking</option>
+              <option value="Treasury">Treasury</option>
+              <option value="Trade Finance">Trade Finance</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-ghost w-full"   style="margin-top:0.3rem" onclick="addBLItem()">+ Add Item</button>
+        <button class="btn btn-primary w-full" style="margin-top:0.4rem" onclick="runBL()">▶ Analyze P&amp;L</button>
+        <button class="btn btn-ghost w-full"   style="margin-top:0.3rem" onclick="loadBLSample()">Load Sample</button>
+      </div>
+      <div class="card">
+        <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="bl-base" type="number" value="45.0"/></div>
+      </div>
+    </div>
+
+    <div id="blResults">
+      <div class="coming-soon"><div class="coming-soon-icon">📊</div><h2>Business Line P&amp;L</h2>
+      <p>Add portfolio items by business line and run to see NIM decomposition per desk.</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let blItems = [];
+
+function switchTab(tab) {
+  ['pricer','bl'].forEach(t => {
+    document.getElementById('panel-'+t).style.display  = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+// ── Loan Pricer ─────────────────────────────────────────────────────────────
+function loadPricerSamples() {
+  document.getElementById('lType').value    = 'corporate';
+  document.getElementById('lRating').value  = 'BBB';
+  document.getElementById('lTenor').value   = '24';
+  document.getElementById('lAmount').value  = '500';
+  document.getElementById('lBase').value    = '45.0';
+  document.getElementById('lRoe').value     = '20.0';
+  document.getElementById('lOpex').value    = '2.5';
+  document.getElementById('lCapital').value = '12.0';
+}
+
+async function runPricer() {
+  document.getElementById('pricerResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Computing minimum loan rate...</div>';
+  try {
+    const resp = await fetch('/api/ftp/loan-price', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        loan_type:          document.getElementById('lType').value,
+        credit_rating:      document.getElementById('lRating').value,
+        loan_tenor_months:  parseFloat(document.getElementById('lTenor').value),
+        loan_amount_m:      parseFloat(document.getElementById('lAmount').value),
+        base_rate:          parseFloat(document.getElementById('lBase').value),
+        roe_target_pct:     parseFloat(document.getElementById('lRoe').value),
+        opex_pct:           parseFloat(document.getElementById('lOpex').value),
+        capital_ratio_pct:  parseFloat(document.getElementById('lCapital').value),
+        has_prepayment:     document.getElementById('lPrepay').checked,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderPricer(d);
+  } catch(err) {
+    document.getElementById('pricerResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderPricer(d) {
+  const total = d.min_loan_rate_pct;
+  const pBase  = d.base_rate_pct / total * 100;
+  const pFtp   = (d.lp_bps/100 + d.opt_bps/100) / total * 100;
+  const pCred  = d.credit_premium_pct / total * 100;
+  const pOpex  = d.opex_pct / total * 100;
+  const pCap   = d.capital_charge_pct / total * 100;
+
+  const recRows = d.pricing_recommendations.map(r =>
+    `<tr>
+      <td class="r">${r.target_nim_bps}bps</td>
+      <td class="r" style="color:var(--accent);font-weight:600">${r.recommended_rate_pct.toFixed(3)}%</td>
+      <td class="r">${r.annual_nim_income_m.toFixed(2)}M</td>
+      <td class="r" style="color:var(--text-muted)">${((r.recommended_rate_pct - d.base_rate_pct)*100).toFixed(0)}bps</td>
+    </tr>`).join('');
+
+  document.getElementById('pricerResults').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Min Loan Rate</div><div class="stat-value accent">${d.min_loan_rate_pct.toFixed(4)}%</div><div class="stat-sub">${d.loan_type} / ${d.credit_rating}</div></div>
+      <div class="stat-box"><div class="stat-label">FTP Rate</div><div class="stat-value">${d.ftp_rate_pct.toFixed(4)}%</div><div class="stat-sub">Base + LP + Opt</div></div>
+      <div class="stat-box"><div class="stat-label">Credit Premium</div><div class="stat-value negative">${d.credit_premium_pct.toFixed(2)}%</div><div class="stat-sub">PD×LGD estimate</div></div>
+      <div class="stat-box"><div class="stat-label">Capital Charge</div><div class="stat-value gold">${d.capital_charge_pct.toFixed(3)}%</div><div class="stat-sub">RWA ${(d.rwa_weight*100).toFixed(0)}% × RoE</div></div>
+      <div class="stat-box"><div class="stat-label">Capital Required</div><div class="stat-value">${d.capital_needed_m.toFixed(1)}M</div><div class="stat-sub">CET1 on RWA</div></div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">Rate Decomposition</div>
+        <div class="decomp-bar">
+          <div class="decomp-seg" style="width:${pBase.toFixed(1)}%;background:var(--panel);color:var(--text-muted)">Base ${d.base_rate_pct.toFixed(1)}%</div>
+          <div class="decomp-seg" style="width:${pFtp.toFixed(1)}%;background:var(--accent);color:#fff">LP ${d.lp_bps.toFixed(0)}bps</div>
+          <div class="decomp-seg" style="width:${pCred.toFixed(1)}%;background:var(--red);color:#fff">Cred ${d.credit_premium_pct.toFixed(2)}%</div>
+          <div class="decomp-seg" style="width:${pOpex.toFixed(1)}%;background:var(--text-muted);color:#fff">OpEx</div>
+          <div class="decomp-seg" style="width:${pCap.toFixed(1)}%;background:var(--gold);color:#000">Cap</div>
+        </div>
+        <div class="metric-row"><span class="metric-label">Base rate (TCMB)</span><span class="metric-val">${d.base_rate_pct.toFixed(3)}%</span></div>
+        <div class="metric-row"><span class="metric-label">Liquidity premium (${d.loan_tenor_months}M)</span><span class="metric-val accent">+${d.lp_bps.toFixed(1)}bps</span></div>
+        <div class="metric-row"><span class="metric-label">Optionality (prepay)</span><span class="metric-val accent">+${d.opt_bps}bps</span></div>
+        <div class="metric-row"><span class="metric-label">FTP rate</span><span class="metric-val" style="color:var(--green)">${d.ftp_rate_pct.toFixed(4)}%</span></div>
+        <hr class="sep"/>
+        <div class="metric-row"><span class="metric-label">Credit premium (${d.credit_rating})</span><span class="metric-val negative">${d.credit_premium_pct.toFixed(4)}%</span></div>
+        <div class="metric-row"><span class="metric-label">OpEx</span><span class="metric-val">${d.opex_pct.toFixed(3)}%</span></div>
+        <div class="metric-row"><span class="metric-label">Capital charge (RWA ${(d.rwa_weight*100).toFixed(0)}%)</span><span class="metric-val gold">${d.capital_charge_pct.toFixed(4)}%</span></div>
+        <hr class="sep"/>
+        <div class="metric-row" style="border:none"><span class="metric-label" style="font-weight:600;color:var(--text)">Minimum loan rate</span><span class="metric-val accent" style="font-size:0.85rem">${d.min_loan_rate_pct.toFixed(4)}%</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Pricing at Various NIM Targets</div>
+        <table class="rec-table">
+          <thead><tr><th class="r">Target NIM</th><th class="r">Recommended Rate</th><th class="r">Annual NIM</th><th class="r">vs Base</th></tr></thead>
+          <tbody>${recRows}</tbody>
+        </table>
+        <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--text-muted);line-height:1.6">
+          <strong style="color:var(--text)">Interpretation:</strong> Any rate above ${d.min_loan_rate_pct.toFixed(3)}% generates positive NIM for the bank. 
+          At ${(d.min_loan_rate_pct+1.5).toFixed(3)}% (+150bps NIM target), annual income = ${(d.loan_amount_m*0.015).toFixed(1)}M on ${d.loan_amount_m}M exposure.
+        </div>
+      </div>
+    </div>`;
+}
+
+// ── Business Line P&L ────────────────────────────────────────────────────────
+function addBLItem() {
+  const name  = document.getElementById('bl-name').value.trim();
+  const amt   = parseFloat(document.getElementById('bl-amt').value);
+  const cr    = parseFloat(document.getElementById('bl-cr').value);
+  const ftp   = parseFloat(document.getElementById('bl-ftp').value);
+  const tenor = parseFloat(document.getElementById('bl-tenor').value);
+  const type  = document.getElementById('bl-type').value;
+  const line  = document.getElementById('bl-line').value;
+  if (!name || isNaN(amt) || isNaN(cr) || isNaN(ftp)) { alert('All fields required.'); return; }
+  blItems.push({name, amount:amt, client_rate:cr, ftp_rate:ftp, tenor_months:tenor, type, business_line:line});
+  renderBLList();
+  ['bl-name','bl-amt','bl-cr','bl-ftp'].forEach(id => document.getElementById(id).value='');
+}
+
+function removeBL(i) { blItems.splice(i,1); renderBLList(); }
+
+function renderBLList() {
+  document.getElementById('blList').innerHTML = blItems.map((it,i) => `
+    <div style="display:grid;grid-template-columns:1fr 55px 55px 55px 22px;gap:0.3rem;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem 0.5rem;font-size:0.65rem">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${it.name}</span>
+      <span style="text-align:right;color:var(--text-dim)">${it.amount}M</span>
+      <span style="text-align:right;color:var(--text-dim)">${it.client_rate}%</span>
+      <span style="text-align:right;color:var(--accent)">${it.ftp_rate}%ftp</span>
+      <button style="background:none;border:none;color:var(--text-muted);cursor:pointer" onclick="removeBL(${i})">×</button>
+    </div>`).join('');
+}
+
+function loadBLSample() {
+  blItems = [
+    {name:'Corp Term Loan A',    amount:800,  client_rate:49.0, ftp_rate:47.2, tenor_months:24, type:'loan',    business_line:'Corporate Banking'},
+    {name:'Corp Term Loan B',    amount:500,  client_rate:48.5, ftp_rate:47.2, tenor_months:24, type:'loan',    business_line:'Corporate Banking'},
+    {name:'SME Loan Portfolio',  amount:400,  client_rate:52.0, ftp_rate:45.8, tenor_months:12, type:'loan',    business_line:'SME Banking'},
+    {name:'Mortgage Portfolio',  amount:300,  client_rate:43.5, ftp_rate:47.5, tenor_months:60, type:'loan',    business_line:'Retail Banking'},
+    {name:'Consumer Loans',      amount:200,  client_rate:56.0, ftp_rate:45.2, tenor_months:6,  type:'loan',    business_line:'Retail Banking'},
+    {name:'Govt Bond Portfolio', amount:900,  client_rate:38.5, ftp_rate:45.0, tenor_months:36, type:'loan',    business_line:'Treasury'},
+    {name:'Demand Deposits',     amount:1500, client_rate:12.0, ftp_rate:45.0, tenor_months:1,  type:'deposit', business_line:'Retail Banking'},
+    {name:'Time Deposits 3M',    amount:1900, client_rate:42.0, ftp_rate:45.6, tenor_months:3,  type:'deposit', business_line:'Corporate Banking'},
+  ];
+  renderBLList();
+}
+
+async function runBL() {
+  if (!blItems.length) { alert('Add items first.'); return; }
+  document.getElementById('blResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Analyzing business line P&L...</div>';
+  try {
+    const resp = await fetch('/api/ftp/business-lines', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({base_rate: parseFloat(document.getElementById('bl-base').value), items: blItems})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderBL(d);
+  } catch(err) {
+    document.getElementById('blResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderBL(d) {
+  const colors = ['#2563eb','#10b981','#f59e0b','#8b5cf6','#ef4444'];
+  const rows = d.business_lines.map((bl,i) => {
+    const nimColor = bl.nim_income_m > 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="color:${colors[i%colors.length]};font-weight:500">${bl.business_line}</td>
+      <td class="r">${bl.volume_m.toFixed(0)}M</td>
+      <td class="r" style="color:${nimColor};font-weight:600">${bl.nim_income_m.toFixed(2)}M</td>
+      <td class="r">${bl.nim_pct.toFixed(3)}%</td>
+      <td class="r" style="color:var(--accent)">${bl.alm_lp_income_m.toFixed(2)}M</td>
+      <td class="r" style="color:var(--text-muted)">${bl.base_income_m.toFixed(1)}M</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('blResults').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Total NIM</div><div class="stat-value positive">${d.total_nim_m.toFixed(2)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Bank NIM</div><div class="stat-value accent">${d.bank_nim_pct.toFixed(3)}%</div></div>
+      <div class="stat-box"><div class="stat-label">Total Volume</div><div class="stat-value">${d.total_volume_m.toFixed(0)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Business Lines</div><div class="stat-value">${d.business_lines.length}</div></div>
+    </div>
+    <div class="grid-2 mb-2">
+      <div class="card col-span-2">
+        <div class="card-title">NIM by Business Line</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem;height:220px" id="chartBL"></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Business Line P&L Detail</div>
+      <table class="bl-table">
+        <thead><tr><th>Business Line</th><th class="r">Volume</th><th class="r">NIM Income</th><th class="r">NIM %</th><th class="r">ALM LP</th><th class="r">Base</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  Plotly.newPlot('chartBL', [
+    { type:'bar', x:d.business_lines.map(b=>b.business_line),
+      y:d.business_lines.map(b=>b.nim_income_m),
+      marker:{color:d.business_lines.map((b,i)=>colors[i%colors.length])},
+      name:'NIM Income (M)' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:60,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233',tickangle:-20,tickfont:{size:9}},
+    yaxis:{gridcolor:'#1e2233',title:{text:'NIM Income (M)',font:{size:9}}},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,436 @@
+{% extends 'base.html' %}
+{% block title %}Morning Brief — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.risk-banner { border-radius:var(--radius); padding:1rem 1.5rem; border:2px solid; display:flex; align-items:center; justify-content:space-between; margin-bottom:1.25rem; }
+.risk-score  { font-size:2.5rem; font-weight:900; font-family:var(--font-head); line-height:1; }
+.risk-label  { font-size:0.9rem; font-weight:700; font-family:var(--font-head); letter-spacing:0.08em; }
+.risk-sub    { font-size:0.68rem; margin-top:0.25rem; opacity:0.8; }
+.risk-headline { font-size:0.78rem; max-width:600px; line-height:1.6; opacity:0.9; }
+
+.kpi-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:0.6rem; margin-bottom:1.25rem; }
+.kpi-box  { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.7rem 0.9rem; border-left:3px solid; }
+.kpi-label{ font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+.kpi-val  { font-size:1.15rem; font-weight:700; font-family:var(--font-head); margin:0.15rem 0; }
+.kpi-sub  { font-size:0.6rem; color:var(--text-muted); }
+
+.action-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; border-left:4px solid; margin-bottom:0.5rem; display:grid; grid-template-columns:80px 1fr; gap:0.75rem; align-items:start; }
+.action-prio { font-size:0.6rem; font-weight:700; font-family:var(--font-mono); padding:2px 6px; border-radius:3px; text-align:center; }
+.action-text { font-size:0.75rem; font-weight:600; color:var(--text); margin-bottom:0.2rem; }
+.action-detail { font-size:0.65rem; color:var(--text-muted); line-height:1.5; }
+
+.top-risk-row { display:grid; grid-template-columns:100px 1fr; gap:0.5rem; align-items:center; padding:0.4rem 0; border-bottom:1px solid var(--border-soft); font-size:0.72rem; }
+.risk-badge   { font-size:0.6rem; font-family:var(--font-mono); padding:2px 6px; border-radius:3px; text-align:center; font-weight:600; }
+
+.bucket-row { display:grid; grid-template-columns:80px 1fr 80px 80px 80px; gap:0.4rem; align-items:center; padding:0.35rem 0; border-bottom:1px solid var(--border-soft); font-size:0.68rem; }
+.bucket-bar { height:6px; border-radius:3px; background:var(--red); opacity:0.7; }
+
+.score-gauge { position:relative; display:inline-flex; align-items:center; justify-content:center; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+
+.input-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:0.4rem; }
+.input-box   { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.45rem 0.6rem; }
+.input-lbl   { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:0.15rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Morning Brief</h1>
+      <p>Tek ekran risk özeti — tüm ALM metrikleri, açık pozisyonlar, öncelikli aksiyonlar</p>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-ghost" onclick="prefillFromResults()" title="NII, EVE, LCR, FX hesaplamalarından otomatik doldur">🔄 Hesaplamalardan Doldur</button>
+      <button class="btn btn-ghost" onclick="loadScenario()">📂 Senaryo Yükle</button>
+      <button class="btn btn-primary" onclick="runBrief()">▶ Analiz Et</button>
+    </div>
+  </div>
+</div>
+
+<!-- SESSION SUMMARY STRIP -->
+<div id="sessionStrip" style="margin-bottom:1rem;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:0.65rem 1rem;display:flex;align-items:center;gap:1.25rem;font-size:0.75rem;flex-wrap:wrap">
+  <span id="sessionStripContent" style="color:var(--text-muted)">⏳ Oturum yükleniyor…</span>
+  <a href="/balance-sheet" class="btn btn-ghost" style="font-size:0.65rem;margin-left:auto">📋 Balance Sheet</a>
+</div>
+
+<!-- INPUT PANEL -->
+<div class="card mb-2" id="inputPanel">
+  <div class="flex-between mb-2">
+    <div class="card-title" style="margin:0">Metrik Girişi</div>
+    <button class="btn btn-ghost" style="font-size:0.65rem" onclick="toggleInput()">▾ Gizle/Göster</button>
+  </div>
+  <div id="inputForm">
+    <div class="input-grid">
+      <div class="input-box"><div class="input-lbl">NII Base (M)</div><input class="form-input" id="i-nii-base" type="number" placeholder="620"/></div>
+      <div class="input-box"><div class="input-lbl">NII Worst Δ (M)</div><input class="form-input" id="i-nii-delta" type="number" placeholder="-14"/></div>
+      <div class="input-box"><div class="input-lbl">Worst Scenario</div><input class="form-input" id="i-nii-scenario" placeholder="+200bps Parallel"/></div>
+      <div class="input-box"><div class="input-lbl">ΔEVE Worst (M)</div><input class="form-input" id="i-eve" type="number" placeholder="-185"/></div>
+      <div class="input-box"><div class="input-lbl">Tier 1 Capital (M)</div><input class="form-input" id="i-tier1" type="number" placeholder="1500"/></div>
+      <div class="input-box"><div class="input-lbl">Duration Gap (Y)</div><input class="form-input" id="i-dur" type="number" step="0.01" placeholder="-0.7"/></div>
+      <div class="input-box"><div class="input-lbl">LCR (%)</div><input class="form-input" id="i-lcr" type="number" placeholder="118"/></div>
+      <div class="input-box"><div class="input-lbl">NSFR (%)</div><input class="form-input" id="i-nsfr" type="number" placeholder="112"/></div>
+      <div class="input-box"><div class="input-lbl">FX NOP (M TL)</div><input class="form-input" id="i-fx" type="number" placeholder="350"/></div>
+      <div class="input-box"><div class="input-lbl">Capital (M TL)</div><input class="form-input" id="i-cap" type="number" placeholder="1800"/></div>
+      <div class="input-box"><div class="input-lbl">Repricing Gap (M)</div><input class="form-input" id="i-rgap" type="number" placeholder="-700"/></div>
+      <div class="input-box"><div class="input-lbl">Worst Bucket</div><input class="form-input" id="i-bucket" placeholder="3M"/></div>
+      <div class="input-box"><div class="input-lbl">Total Assets (M)</div><input class="form-input" id="i-assets" type="number" placeholder="4900"/></div>
+      <div class="input-box"><div class="input-lbl">Base Rate % (TCMB)</div><input class="form-input" id="i-base" type="number" step="0.25" placeholder="42.5"/></div>
+      <div class="input-box"><div class="input-lbl">USD/TRY</div><input class="form-input" id="i-usdtry" type="number" step="0.01" placeholder="38.10"/></div>
+      <div class="input-box"><div class="input-lbl">US 10Y (%)</div><input class="form-input" id="i-us10y" type="number" step="0.001" placeholder="4.35"/></div>
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+      <button class="btn btn-primary" onclick="runBrief()">▶ Analiz Et</button>
+      <button class="btn btn-ghost"   onclick="loadSample()">Sample Metrics</button>
+      <button class="btn btn-ghost"   onclick="clearForm()">Temizle</button>
+    </div>
+  </div>
+</div>
+
+<div id="briefOutput">
+  <div class="coming-soon">
+    <div class="coming-soon-icon">🌅</div>
+    <h2>Morning Brief</h2>
+    <p>Metrik girin veya bir senaryo yükleyin, ardından Analiz Et butonuna tıklayın.</p>
+  </div>
+</div>
+
+<!-- Scenario picker modal -->
+<div id="scenarioModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:1000;display:none;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:520px;max-height:80vh;overflow-y:auto">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0">Senaryo Seç</div>
+      <button class="btn btn-ghost" onclick="closeModal()">✕</button>
+    </div>
+    <div id="scenarioList"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let inputVisible = true;
+
+function toggleInput() {
+  inputVisible = !inputVisible;
+  document.getElementById('inputForm').style.display = inputVisible ? '' : 'none';
+}
+
+function g(id) { const v=document.getElementById(id).value; return v===''?null:parseFloat(v)||null; }
+function gs(id){ return document.getElementById(id).value.trim()||null; }
+
+function loadSample() {
+  const vals = {
+    'i-nii-base':'620','i-nii-delta':'-14','i-nii-scenario':'+200bps Parallel',
+    'i-eve':'-185','i-tier1':'1500','i-dur':'-0.7',
+    'i-lcr':'118','i-nsfr':'112','i-fx':'350','i-cap':'1800',
+    'i-rgap':'-700','i-bucket':'3M','i-assets':'4900',
+    'i-base':'42.5','i-usdtry':'38.10','i-us10y':'4.35',
+  };
+  Object.entries(vals).forEach(([id,v]) => { document.getElementById(id).value = v; });
+}
+
+function clearForm() {
+  ['i-nii-base','i-nii-delta','i-nii-scenario','i-eve','i-tier1','i-dur',
+   'i-lcr','i-nsfr','i-fx','i-cap','i-rgap','i-bucket','i-assets',
+   'i-base','i-usdtry','i-us10y'].forEach(id => document.getElementById(id).value = '');
+}
+
+async function runBrief() {
+  document.getElementById('briefOutput').innerHTML =
+    '<div class="loading" style="padding:2rem"><div class="spinner"></div> Risk değerlendirmesi yapılıyor...</div>';
+  const payload = {
+    nii_base:          g('i-nii-base'),
+    nii_worst_delta:   g('i-nii-delta'),
+    nii_worst_scenario:gs('i-nii-scenario') || '+200bps',
+    eve_delta_worst:   g('i-eve'),
+    tier1_capital:     g('i-tier1') || 1500,
+    duration_gap:      g('i-dur') || 0,
+    lcr:               g('i-lcr'),
+    nsfr:              g('i-nsfr'),
+    fx_nop_tl:         g('i-fx') || 0,
+    capital_tl:        g('i-cap') || 1800,
+    repricing_gap:     g('i-rgap') || 0,
+    worst_bucket:      gs('i-bucket') || 'N/A',
+    total_assets:      g('i-assets') || 0,
+    base_rate:         g('i-base') || 42.5,
+    usdtry:            g('i-usdtry'),
+    us_10y:            g('i-us10y'),
+  };
+  try {
+    const resp = await fetch('/api/morning-brief', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderBrief(d);
+    if (inputVisible) toggleInput();  // auto-collapse after analysis
+  } catch(err) {
+    document.getElementById('briefOutput').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderBrief(d) {
+  const rColor  = d.risk_color;
+  const prioCls = {CRITICAL:'#7f1d1d',HIGH:'#ef4444',MODERATE:'#f59e0b',LOW:'#10b981'};
+
+  // KPI boxes
+  const kpiHTML = Object.entries(d.kpis).map(([k,v]) => `
+    <div class="kpi-box" style="border-left-color:${v.color}">
+      <div class="kpi-label">${v.label}</div>
+      <div class="kpi-val" style="color:${v.color}">${v.value}</div>
+      <div class="kpi-sub">${v.sub}</div>
+    </div>`).join('');
+
+  // Top risks
+  const riskHTML = d.top_risks.map(r => `
+    <div class="top-risk-row">
+      <span class="risk-badge" style="background:${d.risk_color}22;color:${d.risk_color}">${r.metric.toUpperCase()}</span>
+      <span style="color:var(--text-dim)">${r.label}</span>
+    </div>`).join('');
+
+  // Open buckets
+  const maxGap = Math.max(...(d.open_buckets||[]).map(b=>Math.abs(b.gap_m)), 1);
+  const bucketsHTML = d.open_buckets?.length
+    ? d.open_buckets.map(b => `
+      <div class="bucket-row">
+        <span style="color:var(--text);font-weight:500">${b.bucket}</span>
+        <div class="bucket-bar" style="width:${Math.min(100,Math.abs(b.gap_m)/maxGap*100).toFixed(0)}%"></div>
+        <span style="color:var(--red);font-family:var(--font-mono);text-align:right">${b.gap_m.toFixed(0)}M</span>
+        <span style="color:var(--text-muted);text-align:right">${b.rsa.toFixed(0)}M</span>
+        <span style="color:var(--text-muted);text-align:right">${b.rsl.toFixed(0)}M</span>
+      </div>`).join('')
+    : '<div style="font-size:0.7rem;color:var(--text-muted);padding:0.5rem">Açık bucket tespit edilmedi</div>';
+
+  // Actions
+  const actionsHTML = d.actions.map(a => `
+    <div class="action-card" style="border-left-color:${a.color}">
+      <div>
+        <div class="action-prio" style="background:${a.color}22;color:${a.color}">${a.priority}</div>
+        <div style="font-size:0.6rem;color:var(--text-muted);margin-top:4px">${a.category}</div>
+      </div>
+      <div>
+        <div class="action-text">${a.action}</div>
+        <div class="action-detail">${a.detail}</div>
+      </div>
+    </div>`).join('');
+
+  // Score radar
+  const scoreEntries = Object.entries(d.scores);
+
+  document.getElementById('briefOutput').innerHTML = `
+
+    <!-- RISK BANNER -->
+    <div class="risk-banner mb-2" style="background:${rColor}10;border-color:${rColor}">
+      <div>
+        <div class="risk-label" style="color:${rColor}">OVERALL RISK STATUS</div>
+        <div class="risk-score" style="color:${rColor}">${d.risk_level}</div>
+        <div class="risk-sub" style="color:${rColor}">Score ${d.overall_score}/100 · ${d.generated_at}</div>
+      </div>
+      <div class="risk-headline" style="color:${rColor}">${d.alco_headline}</div>
+    </div>
+
+    <!-- KPI GRID -->
+    <div class="kpi-grid">${kpiHTML}</div>
+
+    <div class="grid-3 mb-2">
+      <!-- TOP RISKS -->
+      <div class="card">
+        <div class="card-title">Öncelikli Riskler</div>
+        ${riskHTML}
+        <div style="margin-top:0.75rem">
+          <div class="chart-box" id="chartRadar" style="height:200px"></div>
+        </div>
+      </div>
+
+      <!-- OPEN BUCKETS -->
+      <div class="card">
+        <div class="card-title">Açık Repricing Bucketları</div>
+        <div class="bucket-row" style="font-size:0.6rem;color:var(--text-muted);border:none;padding-bottom:0.2rem">
+          <span>Bucket</span><span></span><span style="text-align:right">Gap</span>
+          <span style="text-align:right">RSA</span><span style="text-align:right">RSL</span>
+        </div>
+        ${bucketsHTML}
+      </div>
+
+      <!-- ACTIONS -->
+      <div class="card">
+        <div class="card-title">Önerilen Aksiyonlar</div>
+        ${actionsHTML}
+      </div>
+    </div>
+
+    <!-- QUICK LINKS -->
+    <div class="card">
+      <div class="card-title">Detaylı Modüllere Git</div>
+      <div style="display:flex;flex-wrap:wrap;gap:0.5rem">
+        <a href="/nii-sensitivity"  class="btn btn-ghost" style="font-size:0.7rem">NII Sensitivity</a>
+        <a href="/eve-duration-gap" class="btn btn-ghost" style="font-size:0.7rem">EVE / Duration Gap</a>
+        <a href="/liquidity-ratios" class="btn btn-ghost" style="font-size:0.7rem">LCR / NSFR</a>
+        <a href="/fx-gap"           class="btn btn-ghost" style="font-size:0.7rem">FX Gap</a>
+        <a href="/hedge-engine"     class="btn btn-ghost" style="font-size:0.7rem">Hedge Engine →</a>
+        <a href="/alco-memo"        class="btn btn-ghost" style="font-size:0.7rem">ALCO Memo →</a>
+      </div>
+    </div>`;
+
+  renderRadar(d.scores);
+}
+
+function renderRadar(scores) {
+  const labels = Object.keys(scores).map(k => k.toUpperCase());
+  const vals   = Object.values(scores);
+  Plotly.newPlot('chartRadar', [{
+    type:'scatterpolar', r:[...vals, vals[0]], theta:[...labels, labels[0]],
+    fill:'toself', fillcolor:'rgba(37,99,235,0.15)',
+    line:{color:'#2563eb',width:2}, mode:'lines',
+  }], {
+    polar:{radialaxis:{visible:true,range:[0,100],tickfont:{size:8},gridcolor:'#1e2233'},
+           angularaxis:{gridcolor:'#1e2233',tickfont:{size:9}}},
+    paper_bgcolor:'transparent', margin:{t:10,b:10,l:20,r:20},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+}
+
+// Scenario picker
+async function loadScenario() {
+  const modal = document.getElementById('scenarioModal');
+  modal.style.display = 'flex';
+  document.getElementById('scenarioList').innerHTML =
+    '<div class="loading" style="padding:1rem"><div class="spinner"></div></div>';
+  try {
+    const resp = await fetch('/api/scenarios');
+    const list = await resp.json();
+    const catColors = {Base:'var(--accent)',Stress:'var(--red)',Hedged:'var(--green)',Custom:'var(--gold)'};
+    document.getElementById('scenarioList').innerHTML = list.map(s => `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.6rem 0.8rem;margin-bottom:0.4rem;cursor:pointer;display:flex;justify-content:space-between;align-items:center"
+           onclick="pickScenario('${s.id}')">
+        <div>
+          <div style="font-size:0.75rem;font-weight:500;color:var(--text)">${s.name}</div>
+          <div style="font-size:0.65rem;color:var(--text-muted)">${s.description}</div>
+        </div>
+        <span style="font-size:0.6rem;padding:2px 7px;border-radius:3px;background:${(catColors[s.category]||'var(--text-muted)')}22;color:${catColors[s.category]||'var(--text-muted)'}">${s.category}</span>
+      </div>`).join('');
+  } catch(err) {
+    document.getElementById('scenarioList').innerHTML = `<div style="color:var(--red)">${err.message}</div>`;
+  }
+}
+
+async function pickScenario(id) {
+  closeModal();
+  try {
+    const resp = await fetch(`/api/scenarios/${id}`);
+    const sc   = await resp.json();
+    if (sc.error) throw new Error(sc.error);
+    const sd = sc.data || {};
+    // Fill base_rate, assets summary
+    document.getElementById('i-base').value  = sd.base_rate || '';
+    document.getElementById('i-assets').value= (sd.assets||[]).reduce((s,a)=>s+a.amount,0)||'';
+    // Show scenario loaded notice
+    document.getElementById('briefOutput').innerHTML = `
+      <div class="coming-soon">
+        <div class="coming-soon-icon">📂</div>
+        <h2>Senaryo Yüklendi: ${sc.name}</h2>
+        <p>${sc.description}</p>
+        <p style="font-size:0.7rem;color:var(--text-muted);margin-top:0.5rem">NII/EVE/Duration metriklerini girin ve Analiz Et butonuna tıklayın.</p>
+      </div>`;
+  } catch(err) { alert(err.message); }
+}
+
+function closeModal() {
+  document.getElementById('scenarioModal').style.display = 'none';
+}
+document.getElementById('scenarioModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+// ── Prefill from calculation results ──────────────────────────────────────
+async function prefillFromResults() {
+  try {
+    const r = await fetch('/api/prefill/morning_brief');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+
+    const fields = d.fields || {};
+    let filled = 0, missing = [];
+
+    Object.entries(fields).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      if (val !== null && val !== undefined) {
+        el.value = (typeof val === 'number') ? val : val;
+        filled++;
+      } else {
+        missing.push(id);
+      }
+    });
+
+    // Build sourced label
+    const sourced = d.sourced || [];
+    const ts = d.timestamps || {};
+    const ageLabel = Object.entries(ts).map(([k,v]) => {
+      const age = v.age_s < 60 ? `${v.age_s}s` : `${Math.round(v.age_s/60)}dk`;
+      return `${k.toUpperCase()} (${age})`;
+    }).join(' · ');
+
+    showPrefillToast(
+      filled > 0
+        ? `✓ ${filled} alan dolduruldu${sourced.length ? ' — ' + sourced.join(', ') : ''}${ageLabel ? ' [' + ageLabel + ']' : ''}`
+        : '⚠ Henüz hesaplama yapılmamış — önce NII, EVE, LCR hesaplayın',
+      filled > 0
+    );
+  } catch(e) {
+    showPrefillToast('Hata: ' + e.message, false);
+  }
+}
+
+function showPrefillToast(msg, ok=true) {
+  // Remove existing
+  document.querySelectorAll('.prefill-toast').forEach(el => el.remove());
+  const el = document.createElement('div');
+  el.className = 'prefill-toast';
+  el.textContent = msg;
+  el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;
+    background:${ok?'var(--green-dim)':'var(--gold-dim)'};
+    color:${ok?'var(--green)':'var(--gold)'};
+    border:1px solid ${ok?'rgba(16,185,129,.3)':'rgba(245,158,11,.3)'};
+    border-radius:var(--radius);padding:.6rem 1.1rem;font-size:.75rem;
+    font-family:var(--font-mono);box-shadow:0 4px 20px rgba(0,0,0,.4);
+    max-width:520px;line-height:1.4;`;
+  document.body.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .4s';
+    setTimeout(()=>el.remove(),500); }, 4000);
+}
+
+// ── Balance Sheet Session Strip ────────────────────────────────────────────
+(async function loadSessionStrip() {
+  try {
+    const r = await fetch('/api/session/summary');
+    const d = await r.json();
+    const el = document.getElementById('sessionStripContent');
+    if (!d.has_session) {
+      el.innerHTML = `<span style="color:var(--text-muted)">⚪ Aktif bilanço oturumu yok</span>`;
+      return;
+    }
+    const gap = d.net_gap;
+    const gapColor = gap >= 0 ? 'var(--green)' : 'var(--red)';
+    const gapSign  = gap >= 0 ? '+' : '';
+    el.innerHTML = `
+      <span style="color:var(--gold);font-weight:600">📋 ${d.name}</span>
+      <span style="color:var(--text-muted)">|</span>
+      <span>${d.n_assets} aktif &nbsp;/&nbsp; ${d.n_liabilities} pasif</span>
+      <span style="color:var(--text-muted)">|</span>
+      <span>Aktif: <strong>${(d.total_assets).toLocaleString(undefined,{maximumFractionDigits:0})}M</strong></span>
+      <span>Pasif: <strong>${(d.total_liabilities).toLocaleString(undefined,{maximumFractionDigits:0})}M</strong></span>
+      <span>Gap: <strong style="color:${gapColor}">${gapSign}${gap.toLocaleString(undefined,{maximumFractionDigits:0})}M</strong></span>
+      ${d.base_rate ? `<span style="color:var(--text-muted)">|</span><span>Baz Faiz: <strong>${d.base_rate}%</strong></span>` : ''}
+      <span style="font-size:0.65rem;color:var(--text-muted)">${d.saved_at ? d.saved_at.replace('T',' ').slice(0,16) : ''}</span>
+    `;
+  } catch(e) {
+    document.getElementById('sessionStripContent').textContent = '—';
+  }
+})();
+</script>
+{% endblock %}

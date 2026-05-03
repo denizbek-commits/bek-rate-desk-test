@@ -1,0 +1,341 @@
+{% extends 'base.html' %}
+{% block title %}FX Gap — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 1rem; align-items: start; }
+.panel-left { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.pos-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 220px; overflow-y: auto; }
+.pos-row {
+  display: grid; grid-template-columns: 1fr 50px 60px 60px 60px 22px;
+  align-items: center; gap: 0.3rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.35rem 0.5rem; font-size: 0.68rem;
+}
+.pos-name { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pos-num  { text-align: right; font-variant-numeric: tabular-nums; font-size: 0.65rem; }
+.ccy-badge { font-size: 0.58rem; border-radius: 3px; padding: 1px 5px; text-align: center; font-weight: 600; }
+.ccy-TL  { background: rgba(37,99,235,0.15);  color: var(--accent); }
+.ccy-USD { background: rgba(16,185,129,0.15); color: var(--green); }
+.ccy-EUR { background: rgba(245,158,11,0.15); color: var(--gold); }
+.item-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; }
+.item-remove:hover { color: var(--red); }
+
+.add-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 3; }
+.add-form .half { grid-column: span 1; }
+
+.ccy-tabs { display: flex; gap: 0; margin-bottom: 1rem; border-bottom: 1px solid var(--border); }
+.ccy-tab {
+  padding: 0.4rem 1rem; font-size: 0.72rem; font-weight: 500;
+  color: var(--text-muted); border-bottom: 2px solid transparent;
+  cursor: pointer; transition: all 0.15s; font-family: var(--font-mono);
+}
+.ccy-tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.gap-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.72rem; }
+.gap-bucket { width: 75px; color: var(--text-muted); flex-shrink: 0; }
+.gap-val    { width: 70px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.gap-track  { flex: 1; height: 5px; background: var(--border); border-radius: 3px; position: relative; }
+.gap-fill   { position: absolute; top: 0; height: 100%; border-radius: 3px; }
+.gap-fill.pos { background: var(--green); left: 50%; }
+.gap-fill.neg { background: var(--red);   right: 50%; }
+.gap-result { width: 80px; text-align: right; font-variant-numeric: tabular-nums; font-weight: 500; }
+.gap-result.pos { color: var(--green); }
+.gap-result.neg { color: var(--red); }
+
+.stress-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 0.5rem; }
+.stress-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.75rem; }
+.stress-label { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.3rem; }
+.stress-pnl   { font-size: 1rem; font-weight: 500; font-family: var(--font-mono); }
+.stress-pnl.pos { color: var(--green); }
+.stress-pnl.neg { color: var(--red); }
+.stress-shocks { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.2rem; }
+
+.rate-diff-row { display: flex; align-items: center; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.72rem; }
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>FX Gap Tracker <span class="badge badge-blue" style="font-size:0.6rem;vertical-align:middle">TR</span></h1>
+      <p>TL / USD / EUR position mismatch by tenor — NOP, carry analysis, and BRSA-style FX stress scenarios</p>
+    </div>
+    <div id="fxRatesBadge" class="flex-center gap-sm" style="font-size:0.68rem;color:var(--text-muted)">
+      Fetching live rates...
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ══ LEFT ══ -->
+  <div class="panel-left">
+    <div class="card">
+      <div class="card-title">Positions</div>
+      <div style="display:grid;grid-template-columns:1fr 50px 60px 60px 60px 22px;gap:0.3rem;padding:0 0.1rem 0.4rem;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">
+        <span>Name</span><span style="text-align:right">CCY</span><span style="text-align:right">Assets</span><span style="text-align:right">Liabs</span><span style="text-align:right">Tenor</span><span></span>
+      </div>
+      <div class="pos-list" id="posList"></div>
+      <hr class="sep"/>
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="pName" placeholder="e.g. USD Corporate Loans"/></div>
+        <div class="form-group"><label class="form-label">Currency</label>
+          <select class="form-select" id="pCcy"><option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Assets (M)</label><input class="form-input" id="pAssets" type="number" placeholder="200"/></div>
+        <div class="form-group"><label class="form-label">Liabilities (M)</label><input class="form-input" id="pLiabs" type="number" placeholder="150"/></div>
+        <div class="form-group"><label class="form-label">Tenor (months)</label><input class="form-input" id="pTenor" type="number" placeholder="12"/></div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addPosition()">+ Add Position</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Rate Parameters <span class="badge badge-blue" style="font-size:0.58rem">TR Context</span></div>
+      <div class="add-form">
+        <div class="form-group"><label class="form-label">TCMB Rate (%)</label><input class="form-input" id="tcmbRate" type="number" step="0.25" value="45.0"/></div>
+        <div class="form-group"><label class="form-label">Fed Rate (%)</label><input class="form-input" id="fedRate" type="number" step="0.25" value="5.25"/></div>
+        <div class="form-group"><label class="form-label">ECB Rate (%)</label><input class="form-input" id="ecbRate" type="number" step="0.25" value="4.00"/></div>
+      </div>
+      <div class="toggle-row mt-1">
+        <label class="toggle"><input type="checkbox" id="liveFxToggle" checked/><span class="toggle-slider"></span></label>
+        <span class="toggle-label">Use live USD/TRY and EUR/TRY rates</span>
+      </div>
+      <div style="margin-top:0.75rem;display:flex;flex-direction:column;gap:0.4rem">
+        <button class="btn btn-primary w-full" onclick="runAnalysis()">▶ Run FX Gap Analysis</button>
+        <button class="btn btn-ghost w-full"   onclick="loadSample()">Load Sample Positions</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ RIGHT ══ -->
+  <div id="resultsPanel">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">💱</div>
+      <h2>FX Gap Tracker</h2>
+      <p>Add positions in TL, USD, and EUR, then run the analysis — or use Load Sample to see it immediately.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let positions = [];
+let lastResult = null;
+
+function addPosition() {
+  const name   = document.getElementById('pName').value.trim();
+  const ccy    = document.getElementById('pCcy').value;
+  const assets = parseFloat(document.getElementById('pAssets').value || 0);
+  const liabs  = parseFloat(document.getElementById('pLiabs').value  || 0);
+  const tenor  = parseFloat(document.getElementById('pTenor').value  || 0);
+  if (!name) { alert('Enter a name.'); return; }
+  positions.push({name, currency: ccy, asset_amount: assets, liab_amount: liabs, tenor_months: tenor});
+  renderList();
+  ['pName','pAssets','pLiabs','pTenor'].forEach(id => document.getElementById(id).value='');
+}
+
+function removePosition(idx) { positions.splice(idx,1); renderList(); }
+
+function renderList() {
+  const el = document.getElementById('posList');
+  if (!positions.length) { el.innerHTML='<div class="text-muted" style="font-size:0.7rem;padding:0.4rem">No positions added</div>'; return; }
+  el.innerHTML = positions.map((p,i) => `
+    <div class="pos-row">
+      <span class="pos-name" title="${p.name}">${p.name}</span>
+      <span class="ccy-badge ccy-${p.currency}">${p.currency}</span>
+      <span class="pos-num" style="color:var(--green)">${p.asset_amount.toLocaleString()}</span>
+      <span class="pos-num" style="color:var(--red)">${p.liab_amount.toLocaleString()}</span>
+      <span class="pos-num">${p.tenor_months}M</span>
+      <button class="item-remove" onclick="removePosition(${i})">✕</button>
+    </div>`).join('');
+}
+
+function loadSample() {
+  positions = [
+    {name:'TL Fixed Loans',       currency:'TL',  asset_amount:3000, liab_amount:0,    tenor_months:12},
+    {name:'TL Gov Bonds',         currency:'TL',  asset_amount:1200, liab_amount:0,    tenor_months:60},
+    {name:'TL Demand Deposits',   currency:'TL',  asset_amount:0,    liab_amount:2500, tenor_months:1},
+    {name:'TL Time Deposits',     currency:'TL',  asset_amount:0,    liab_amount:1800, tenor_months:6},
+    {name:'USD Corporate Loans',  currency:'USD', asset_amount:500,  liab_amount:0,    tenor_months:24},
+    {name:'USD Syndicated Loan',  currency:'USD', asset_amount:300,  liab_amount:0,    tenor_months:36},
+    {name:'USD Eurobond',         currency:'USD', asset_amount:0,    liab_amount:600,  tenor_months:36},
+    {name:'USD Wholesale Funding',currency:'USD', asset_amount:0,    liab_amount:250,  tenor_months:12},
+    {name:'EUR Trade Finance',    currency:'EUR', asset_amount:150,  liab_amount:0,    tenor_months:6},
+    {name:'EUR Deposits',         currency:'EUR', asset_amount:0,    liab_amount:120,  tenor_months:3},
+  ];
+  renderList();
+}
+
+async function runAnalysis() {
+  if (!positions.length) { alert('Add positions or use Load Sample.'); return; }
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Computing FX gap — fetching live rates...</div>';
+  try {
+    const resp = await fetch('/api/fx-gap/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        positions,
+        use_live_fx:     document.getElementById('liveFxToggle').checked,
+        tcmb_rate:       parseFloat(document.getElementById('tcmbRate').value),
+        fed_rate:        parseFloat(document.getElementById('fedRate').value),
+        ecb_rate:        parseFloat(document.getElementById('ecbRate').value),
+        turkish_context: true,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    lastResult = d;
+    updateRateBadge(d);
+    renderResults(d);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><h2>Error</h2><p>${err.message}</p></div>`;
+  }
+}
+
+function updateRateBadge(d) {
+  const el = document.getElementById('fxRatesBadge');
+  const r  = d.fx_rates;
+  el.innerHTML = `<span class="badge badge-green">USD/TRY ${r.USD?.toFixed(2)}</span>
+                  <span class="badge badge-gold" style="background:var(--gold-dim);color:var(--gold);border-color:rgba(245,158,11,0.3)">EUR/TRY ${r.EUR?.toFixed(2)}</span>
+                  <span style="font-size:0.6rem;color:var(--text-muted)">${d.fx_source}</span>`;
+}
+
+function renderResults(d) {
+  const ccys = ['TL','USD','EUR'];
+  const ccyColors = {TL: 'var(--accent)', USD: 'var(--green)', EUR: 'var(--gold)'};
+
+  // KPI strip — NOP per currency
+  const kpis = ccys.map(c => {
+    const cd  = d.currencies[c];
+    const nop = cd.nop_tl !== undefined ? cd.nop_tl : cd.nop;
+    const cls = nop >= 0 ? 'positive' : 'negative';
+    const fx_label = c !== 'TL' ? ` (${fmt(cd.nop)} ${c})` : '';
+    return `<div class="stat-box">
+      <div class="stat-label">NOP ${c}</div>
+      <div class="stat-value ${cls}">${fmt(cd.nop_tl)}M TL</div>
+      <div class="stat-sub">${fx_label} @ ${c !== 'TL' ? cd.fx_rate.toFixed(2) : '—'}</div>
+    </div>`;
+  }).join('');
+
+  // Carry analysis
+  const carry = d.carry;
+  const carryRows = `
+    <div class="rate-diff-row"><span>TCMB Rate</span><span style="font-family:var(--font-mono)">${carry.tcmb_rate.toFixed(2)}%</span></div>
+    <div class="rate-diff-row"><span>Fed Funds</span><span style="font-family:var(--font-mono)">${carry.fed_rate.toFixed(2)}%</span></div>
+    <div class="rate-diff-row"><span>ECB Rate</span><span style="font-family:var(--font-mono)">${carry.ecb_rate.toFixed(2)}%</span></div>
+    <div class="rate-diff-row"><span>TL−USD differential</span><span style="color:var(--green);font-family:var(--font-mono)">+${carry.usd_differential_bps}bps</span></div>
+    <div class="rate-diff-row"><span>TL−EUR differential</span><span style="color:var(--gold);font-family:var(--font-mono)">+${carry.eur_differential_bps}bps</span></div>
+    <div class="rate-diff-row"><span>USD carry (annual, TL)</span><span style="font-family:var(--font-mono);color:${carry.usd_carry_annual_tl>=0?'var(--green)':'var(--red)'}">${carry.usd_carry_annual_tl>=0?'+':''}${fmt(carry.usd_carry_annual_tl)}M</span></div>
+    <div class="rate-diff-row"><span>EUR carry (annual, TL)</span><span style="font-family:var(--font-mono);color:${carry.eur_carry_annual_tl>=0?'var(--green)':'var(--red)'}">${carry.eur_carry_annual_tl>=0?'+':''}${fmt(carry.eur_carry_annual_tl)}M</span></div>
+    <div class="rate-diff-row" style="border:none"><span style="font-weight:500">Total carry (annual)</span><span style="font-family:var(--font-mono);font-weight:500;color:${carry.total_carry_annual_tl>=0?'var(--green)':'var(--red)'}">${carry.total_carry_annual_tl>=0?'+':''}${fmt(carry.total_carry_annual_tl)}M</span></div>`;
+
+  // Stress cards
+  const stressCards = Object.entries(d.stress).map(([k,s]) => {
+    const cls = s.pnl_tl >= 0 ? 'pos' : 'neg';
+    return `<div class="stress-card">
+      <div class="stress-label">${s.label}</div>
+      <div class="stress-pnl ${cls}">${s.pnl_tl>=0?'+':''}${fmt(s.pnl_tl)}M TL</div>
+      <div class="stress-shocks">USD ${s.usd_shock_pct>=0?'+':''}${s.usd_shock_pct}% / EUR ${s.eur_shock_pct>=0?'+':''}${s.eur_shock_pct}%</div>
+    </div>`;
+  }).join('');
+
+  // Gap tables per currency
+  const gapTabs = ccys.map(c => {
+    const cd = d.currencies[c];
+    const maxGap = Math.max(...cd.buckets.map(b => Math.abs(b.gap)), 1);
+    const rows = cd.buckets.map(b => {
+      const pct = Math.abs(b.gap) / maxGap * 44;
+      const cls = b.gap >= 0 ? 'pos' : 'neg';
+      return `<div class="gap-row">
+        <span class="gap-bucket">${b.bucket}</span>
+        <span class="gap-val" style="color:var(--green)">${fmt(b.assets)}</span>
+        <div class="gap-track"><div class="gap-fill ${cls}" style="width:${pct}%"></div></div>
+        <span class="gap-val" style="color:var(--red)">${fmt(b.liabilities)}</span>
+        <span class="gap-result ${cls}">${b.gap>=0?'+':''}${fmt(b.gap)}</span>
+      </div>`;
+    }).join('');
+    return `<div id="gapTab-${c}" style="display:none">
+      <div style="font-size:0.65rem;color:var(--text-muted);display:flex;justify-content:space-between;margin-bottom:0.5rem;padding:0 0">
+        <span>Bucket</span><span>Assets (${c})</span><span style="flex:1;text-align:center">Gap</span><span>Liabs (${c})</span><span>Net Gap</span>
+      </div>
+      ${rows}
+      <div style="margin-top:0.75rem;padding-top:0.5rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;font-size:0.72rem;font-weight:500">
+        <span>Net Open Position (NOP)</span>
+        <span class="${cd.nop>=0?'positive':'negative'}" style="font-family:var(--font-mono)">${cd.nop>=0?'+':''}${fmt(cd.nop)} ${c} = ${fmt(cd.nop_tl)}M TL</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="kpi-strip">${kpis}</div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">Gap by Tenor Bucket</div>
+        <div class="ccy-tabs" id="ccyTabs">
+          ${ccys.map(c=>`<div class="ccy-tab ${c==='TL'?'active':''}" onclick="switchTab('${c}')">${c}</div>`).join('')}
+        </div>
+        ${gapTabs}
+      </div>
+      <div class="card">
+        <div class="card-title">Carry Analysis — Rate Differentials</div>
+        ${carryRows}
+      </div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">FX Stress Scenarios (BRSA-style)</div>
+        <div class="stress-grid">${stressCards}</div>
+      </div>
+      <div class="card">
+        <div class="card-title">Consolidated Gap (TL Equivalent)</div>
+        <div class="chart-box" id="chartConsolidated" style="height:200px"></div>
+      </div>
+    </div>
+  `;
+
+  switchTab('TL');
+  renderConsolidatedChart(d);
+}
+
+function switchTab(ccy) {
+  ['TL','USD','EUR'].forEach(c => {
+    const t = document.getElementById('gapTab-' + c);
+    if (t) t.style.display = c === ccy ? 'block' : 'none';
+  });
+  document.querySelectorAll('.ccy-tab').forEach(el => {
+    el.classList.toggle('active', el.textContent.trim() === ccy);
+  });
+}
+
+function renderConsolidatedChart(d) {
+  const buckets  = d.consolidated.map(b => b.bucket);
+  const gaps     = d.consolidated.map(b => b.gap_tl);
+  Plotly.newPlot('chartConsolidated', [{
+    type:'bar', x:buckets, y:gaps,
+    marker:{ color: gaps.map(g => g >= 0 ? '#10b981' : '#ef4444') },
+    text: gaps.map(g => fmt(g)+'M'), textposition:'outside', textfont:{size:8,color:'#94a3b8'},
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:40,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233'},
+    yaxis:{gridcolor:'#1e2233',ticksuffix:'M',title:{text:'Gap (TL)',font:{size:9}}},
+    showlegend:false,
+  }, {displayModeBar:false,responsive:true});
+}
+
+function fmt(v) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});
+}
+
+renderList();
+</script>
+{% endblock %}

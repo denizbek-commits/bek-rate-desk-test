@@ -1,0 +1,299 @@
+{% extends 'base.html' %}
+{% block title %}NOP Takibi — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.nop-card-input { background:var(--surface); }
+
+.status-banner { border-radius:var(--radius); padding:0.85rem 1.1rem; border-left:4px solid; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; }
+.status-ok    { background:rgba(16,185,129,.08);  border-color:var(--green); }
+.status-warn  { background:rgba(217,119,6,.08);   border-color:var(--gold); }
+.status-breach{ background:rgba(239,68,68,.08);   border-color:var(--red); }
+.status-over  { background:rgba(239,68,68,.12);   border-color:var(--red); animation:pulse-red 1s infinite; }
+
+@keyframes pulse-red { 0%,100% { opacity:1; } 50% { opacity:0.6; } }
+
+.nop-progress { height:24px; border-radius:var(--radius); background:var(--border-soft); overflow:hidden; margin:0.75rem 0; position:relative; }
+.nop-fill { height:100%; border-radius:var(--radius); background:linear-gradient(90deg,var(--green),var(--gold),var(--red)); transition:width 0.3s; }
+.nop-marker { position:absolute; height:100%; width:2px; background:var(--accent); top:0; transition:left 0.3s; }
+
+.nop-result-hero { font-family:var(--font-head); font-size:1.8rem; font-weight:800; }
+.nop-warning { background:rgba(239,68,68,.1); border-left:3px solid var(--red); border-radius:var(--radius); padding:0.6rem 0.8rem; font-size:0.68rem; color:var(--red); margin-top:0.5rem; line-height:1.5; }
+
+.nop-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.nop-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.nop-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.nop-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.nop-table .ccy { font-weight:600; color:var(--accent); }
+
+.nop-kpi-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.7rem; }
+.nop-kpi-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.2rem; }
+.nop-kpi-value { font-family:var(--font-head); font-size:0.95rem; font-weight:700; }
+.nop-kpi-sub { font-size:0.62rem; color:var(--text-muted); margin-top:0.1rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>NOP Takibi — BRSA FX Limiti</h1>
+      <p>BRSA %20 özkaynak limiti · Anlık NOP takibi · Uyarı seviyeleri</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span id="nopLiveLabel" style="font-size:0.6rem;color:var(--text-muted)"></span>
+      <button class="btn btn-ghost" onclick="loadLiveNOP()">📡 Canlı Veri</button>
+      <button class="btn btn-ghost" onclick="nopSample()">↺ Örnek Veri</button>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="grid-2">
+  <!-- LEFT: NOP CALCULATOR -->
+  <div class="card">
+    <div class="card-title">NOP Hesaplayıcı</div>
+
+    <div class="form-group"><label class="form-label">Özkaynak Sermayesi (M TL)</label>
+      <input class="form-input" id="nopEquity" type="number" placeholder="5000" step="0.1"/></div>
+
+    <div class="form-group"><label class="form-label">Güncel USD/TRY</label>
+      <input class="form-input" id="nopUSDTRY" type="number" placeholder="38.50" step="0.0001"/></div>
+
+    <div class="form-group"><label class="form-label">Güncel EUR/TRY</label>
+      <input class="form-input" id="nopEURTRY" type="number" placeholder="41.80" step="0.0001"/></div>
+
+    <div class="form-group"><label class="form-label">Güncel GBP/TRY</label>
+      <input class="form-input" id="nopGBPTRY" type="number" placeholder="49.20" step="0.0001"/></div>
+
+    <hr class="sep"/>
+
+    <div class="form-group"><label class="form-label">Off-Balance Sheet USD (M)</label>
+      <input class="form-input" id="nopOffUSD" type="number" placeholder="0" step="0.1"/></div>
+
+    <div class="form-group"><label class="form-label">Off-Balance Sheet EUR (M)</label>
+      <input class="form-input" id="nopOffEUR" type="number" placeholder="0" step="0.1"/></div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+      <button class="btn btn-primary" onclick="calcNOP()">▶ NOP Hesapla</button>
+      <button class="btn btn-ghost" onclick="loadFromPositions()">📡 Pozisyondan Yükle</button>
+    </div>
+
+    <div style="display:flex;gap:0.5rem;margin-top:0.75rem">
+      <button class="btn btn-ghost w-full" onclick="loadLiveRatesForNOP()">📡 Kur Yükle</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: NOP RESULT -->
+  <div id="nopResult">
+    <div class="coming-soon" style="min-height:300px">
+      <div class="coming-soon-icon">📊</div>
+      <p>NOP Hesapla'ya tıklayarak<br>BRSA limitini izlemeye başlayın.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── NOP TRACKER ──────────────────────────────────────────────────────────────
+
+async function loadLiveRatesForNOP() {
+  try {
+    const resp = await fetch('/api/trading/live-rates');
+    const d    = await resp.json();
+    if (d.USDTRY) document.getElementById('nopUSDTRY').value = d.USDTRY.toFixed(4);
+    if (d.EURTRY) document.getElementById('nopEURTRY').value = d.EURTRY.toFixed(4);
+    if (d.GBPTRY) document.getElementById('nopGBPTRY').value = d.GBPTRY.toFixed(4);
+    showToast('Kurlar yüklendi');
+  } catch(err) {
+    showToast('Kurlar yüklenemedi: ' + err.message);
+  }
+}
+
+async function loadLiveNOP() {
+  const lbl = document.getElementById('nopLiveLabel');
+  if (lbl) lbl.textContent = '⏳ Yükleniyor...';
+  try {
+    const resp = await fetch('/api/dealer/nop');
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderNOP(d);
+    if (lbl) lbl.textContent = '🟢 LIVE · ' + (d.timestamp || new Date().toLocaleTimeString('tr-TR'));
+  } catch(err) {
+    if (lbl) lbl.textContent = '⚠️ Veri alınamadı';
+  }
+}
+
+function nopSample() {
+  document.getElementById('nopEquity').value    = '5000';
+  document.getElementById('nopUSDTRY').value    = '38.50';
+  document.getElementById('nopEURTRY').value    = '41.80';
+  document.getElementById('nopGBPTRY').value    = '49.20';
+  document.getElementById('nopOffUSD').value    = '250';
+  document.getElementById('nopOffEUR').value    = '150';
+  calcNOP();
+}
+
+async function calcNOP() {
+  const equity = parseFloat(document.getElementById('nopEquity').value)||0;
+  const usdtry = parseFloat(document.getElementById('nopUSDTRY').value)||0;
+  const eurtry = parseFloat(document.getElementById('nopEURTRY').value)||0;
+  const gbptry = parseFloat(document.getElementById('nopGBPTRY').value)||0;
+  const offUSD = parseFloat(document.getElementById('nopOffUSD').value)||0;
+  const offEUR = parseFloat(document.getElementById('nopOffEUR').value)||0;
+
+  const payload = {
+    equity_m: equity,
+    usd_try: usdtry, eur_try: eurtry, gbp_try: gbptry,
+    off_sheet_usd_m: offUSD, off_sheet_eur_m: offEUR
+  };
+
+  try {
+    const resp = await fetch('/api/dealer/nop', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderNOP(d);
+  } catch(err) {
+    document.getElementById('nopResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderNOP(d) {
+  // Determine status
+  const nopVal = d.nop_total_m || 0;
+  const pctOfLimit = (nopVal / (d.equity_m * 0.20)) * 100;
+  let statusCls = 'status-ok', statusText = 'OK', statusColor = 'var(--green)';
+
+  if (pctOfLimit >= 100) {
+    statusCls = 'status-over';
+    statusText = 'BREACH — LIMIT AŞILDI';
+    statusColor = 'var(--red)';
+  } else if (pctOfLimit >= 80) {
+    statusCls = 'status-breach';
+    statusText = 'ÇOK YAKLAŞTIK';
+    statusColor = 'var(--red)';
+  } else if (pctOfLimit >= 60) {
+    statusCls = 'status-warn';
+    statusText = 'UYARI';
+    statusColor = 'var(--gold)';
+  }
+
+  const progressPct = Math.min(100, pctOfLimit);
+  const markerPct = Math.min(100, (d.nop_total_m / (d.equity_m * 0.20)) * 100);
+
+  // Build by-currency table
+  const byCcyRows = (d.by_ccy || []).map(c => `<tr>
+    <td class="ccy">${c.ccy}</td>
+    <td class="r" style="font-family:var(--font-mono)">${c.net_pos_m.toLocaleString('tr-TR')}M</td>
+    <td class="r" style="font-family:var(--font-mono)">${c.tl_equiv_m.toLocaleString('tr-TR')}M</td>
+    <td class="r">${c.pct_of_nop}%</td>
+  </tr>`).join('');
+
+  document.getElementById('nopResult').innerHTML = `
+    <div class="status-banner ${statusCls}">
+      <div>
+        <div style="font-size:0.62rem;text-transform:uppercase;color:${statusColor};font-weight:700">${statusText}</div>
+        <div class="nop-result-hero" style="color:${statusColor}">${d.nop_total_m.toLocaleString('tr-TR')} M TL</div>
+        <div style="font-size:0.65rem;color:${statusColor}">${pctOfLimit.toFixed(1)}% / Limit 20%</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:0.62rem;color:var(--text-muted)">Limit</div>
+        <div style="font-family:var(--font-head);font-size:1.2rem;color:${statusColor}">${(d.equity_m * 0.20).toLocaleString('tr-TR')} M TL</div>
+      </div>
+    </div>
+
+    <div class="card mb-1">
+      <div class="card-title">Kapasite Göstergesi</div>
+      <div class="nop-progress">
+        <div class="nop-fill" style="width:${progressPct}%"></div>
+        <div class="nop-marker" style="left:${markerPct}%"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:0.62rem;color:var(--text-muted)">
+        <span>0%</span>
+        <span>20% (Limit)</span>
+      </div>
+    </div>
+
+    <div class="card mb-1">
+      <div class="card-title">NOP Parite Bazında</div>
+      <table class="nop-table">
+        <thead><tr><th>Döviz</th><th class="r">Net Pozisyon</th><th class="r">TL Karşılığı</th><th class="r">Pay (%)</th></tr></thead>
+        <tbody>${byCcyRows}</tbody>
+      </table>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:0.5rem;margin-bottom:1rem">
+      <div class="nop-kpi-box">
+        <div class="nop-kpi-label">Toplam NOP</div>
+        <div class="nop-kpi-value">${d.nop_total_m.toLocaleString('tr-TR')}M TL</div>
+      </div>
+      <div class="nop-kpi-box">
+        <div class="nop-kpi-label">Özkaynak</div>
+        <div class="nop-kpi-value">${d.equity_m.toLocaleString('tr-TR')}M TL</div>
+      </div>
+      <div class="nop-kpi-box">
+        <div class="nop-kpi-label">Kalan Kapasite</div>
+        <div class="nop-kpi-value" style="color:var(--green)">${((d.equity_m * 0.20) - d.nop_total_m).toLocaleString('tr-TR')}M TL</div>
+      </div>
+      <div class="nop-kpi-box">
+        <div class="nop-kpi-label">Durum</div>
+        <div class="nop-kpi-value" style="color:${statusColor}">${statusText}</div>
+      </div>
+    </div>
+
+    ${pctOfLimit >= 60 ? `<div class="nop-warning">
+      ⚠️ BRSA %20 özkaynak limiti ciddi şekilde kullanılmaktadır.<br>
+      İhtiyatla hareket ediniz. Yöneticilere rapor veriniz.
+    </div>` : ''}
+  `;
+}
+
+async function loadFromPositions() {
+  try {
+    const resp = await fetch('/api/trading/positions');
+    const posData = await resp.json();
+
+    const rateResp = await fetch('/api/trading/live-rates');
+    const rateData = await rateResp.json();
+
+    // Fill in rates
+    if (rateData.USDTRY) document.getElementById('nopUSDTRY').value = rateData.USDTRY.toFixed(4);
+    if (rateData.EURTRY) document.getElementById('nopEURTRY').value = rateData.EURTRY.toFixed(4);
+    if (rateData.GBPTRY) document.getElementById('nopGBPTRY').value = rateData.GBPTRY.toFixed(4);
+
+    // Aggregate positions by currency
+    let usdNet = 0, eurNet = 0, gbpNet = 0;
+    if (posData.positions) {
+      posData.positions.forEach(p => {
+        const dir = p.direction === 'long' ? 1 : -1;
+        const amt = (p.amount / 1e6) * dir;
+        if (p.pair === 'USDTRY') usdNet += amt;
+        else if (p.pair === 'EURTRY') eurNet += amt;
+        else if (p.pair === 'GBPTRY') gbpNet += amt;
+      });
+    }
+
+    document.getElementById('nopOffUSD').value = usdNet.toFixed(1);
+    document.getElementById('nopOffEUR').value = eurNet.toFixed(1);
+
+    showToast('Pozisyonlar yüklendi');
+    calcNOP();
+  } catch(err) {
+    showToast('Pozisyonlar yüklenemedi: ' + err.message);
+  }
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);
+}
+
+// Load sample on init
+setTimeout(() => nopSample(), 200);
+</script>
+{% endblock %}

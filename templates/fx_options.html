@@ -1,0 +1,995 @@
+{% extends 'base.html' %}
+{% block title %}FX Opsiyon Masası — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+/* ─── TAB SYSTEM ─────────────────────────────────────────────────── */
+.desk-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:1.25rem; }
+.desk-tab  { padding:0.5rem 1.4rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:3px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; margin-bottom:-2px; white-space:nowrap; }
+.desk-tab.active { color:var(--text); border-bottom-color:var(--accent); }
+
+/* ─── RESULT CARD ───────────────────────────────────────────────── */
+.result-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.85rem 1rem; margin-top:0.75rem; }
+.result-hero { font-family:var(--font-head); font-size:1.5rem; font-weight:800; }
+.result-row  { display:flex; justify-content:space-between; padding:0.32rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.result-label{ color:var(--text-muted); }
+.result-val  { font-family:var(--font-mono); font-weight:500; }
+
+/* ─── GREEKS TABLE ─────────────────────────────────────────────── */
+.greeks-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:0.75rem; margin:0.75rem 0; }
+.greeks-grid.col-2 { grid-template-columns:repeat(2,1fr); }
+.greek-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.65rem 0.8rem; }
+.greek-label { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); margin-bottom:0.25rem; }
+.greek-value { font-family:var(--font-mono); font-size:1.05rem; font-weight:600; color:var(--text); }
+
+/* ─── MONEYNESS BADGES ───────────────────────────────────────────– */
+.badge { display:inline-flex; align-items:center; padding:2px 7px; border-radius:3px; font-size:0.58rem; font-weight:500; text-transform:uppercase; letter-spacing:0.06em; }
+.badge-itm { background:rgba(16,185,129,0.15); color:var(--green); border:1px solid rgba(16,185,129,0.3); }
+.badge-atm { background:rgba(37,99,235,0.15); color:var(--accent); border:1px solid rgba(37,99,235,0.3); }
+.badge-otm { background:rgba(239,68,68,0.15); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
+
+/* ─── STRATEGY LEG TABLE ──────────────────────────────────────────– */
+.strat-legs-table { width:100%; border-collapse:collapse; font-size:0.70rem; margin:0.75rem 0; }
+.strat-legs-table th { text-align:left; padding:0.35rem 0.55rem; color:var(--text-muted); font-size:0.58rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.strat-legs-table td { padding:0.42rem 0.55rem; border-bottom:1px solid var(--border-soft); }
+.strat-legs-table .r { text-align:right; }
+.dir-buy { background:rgba(37,99,235,0.12); color:var(--accent); }
+.dir-sell { background:rgba(239,68,68,0.12); color:var(--red); }
+
+/* ─── DATA TABLE ──────────────────────────────────────────────── */
+.data-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.data-table th {
+  text-align:left; padding:0.4rem 0.65rem;
+  color:var(--text-muted); font-size:0.6rem; text-transform:uppercase;
+  letter-spacing:0.08em; border-bottom:1px solid var(--border); font-weight:400;
+}
+.data-table td { padding:0.42rem 0.65rem; border-bottom:1px solid var(--border-soft); color:var(--text-dim); }
+.data-table tr:hover td { background:var(--surface); color:var(--text); }
+.data-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+.data-table .pos { color:var(--green); }
+.data-table .neg { color:var(--red); }
+
+/* ─── OPTION TYPE SELECTOR ──────────────────────────────────────── */
+.toggle-buttons { display:flex; gap:0.35rem; margin-bottom:0.65rem; }
+.toggle-btn { flex:1; padding:0.45rem 0.7rem; border-radius:var(--radius); border:1px solid var(--border); background:var(--surface); color:var(--text-dim); font-size:0.68rem; font-family:var(--font-mono); cursor:pointer; transition:all 0.15s; }
+.toggle-btn.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+.toggle-btn:hover { border-color:var(--accent); }
+
+/* ─── CHART CONTAINER ──────────────────────────────────────────── */
+.chart-container { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin:0.75rem 0; }
+
+/* ─── ACTION DIRECTION BADGE ─────────────────────────────────────– */
+.action-badge { display:inline-flex; align-items:center; gap:0.35rem; padding:0.3rem 0.7rem; border-radius:3px; font-size:0.62rem; font-weight:600; text-transform:uppercase; letter-spacing:0.06em; }
+.action-badge.long-call { background:rgba(16,185,129,0.15); color:var(--green); border:1px solid rgba(16,185,129,0.3); }
+.action-badge.long-put { background:rgba(16,185,129,0.15); color:var(--green); border:1px solid rgba(16,185,129,0.3); }
+.action-badge.short-call { background:rgba(239,68,68,0.15); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
+.action-badge.short-put { background:rgba(239,68,68,0.15); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
+
+/* ─── HELPERS ──────────────────────────────────────────────────── */
+.sep { border:none; border-top:1px solid var(--border-soft); margin:1rem 0; }
+.coming-soon { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:260px; gap:0.9rem; color:var(--text-muted); }
+.coming-soon-icon { font-size:2.2rem; opacity:0.3; }
+.coming-soon p { font-size:0.72rem; text-align:center; max-width:300px; line-height:1.6; }
+.loading { display:flex; align-items:center; gap:0.5rem; color:var(--text-muted); font-size:0.72rem; padding:2rem; justify-content:center; }
+.spinner { width:13px; height:13px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+
+/* ─── INTERPRETATION BOX ──────────────────────────────────────── */
+.interpretation-box { background:rgba(37,99,235,0.07); border-left:3px solid var(--accent); border-radius:var(--radius); padding:0.75rem 1rem; margin:0.75rem 0; font-size:0.70rem; line-height:1.7; color:var(--text-dim); }
+
+/* ─── BREAKEVEN / MAX P&L BOX ────────────────────────────────── */
+.payoff-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; margin:0.5rem 0; }
+.payoff-row { display:flex; justify-content:space-between; padding:0.25rem 0; font-size:0.70rem; }
+.payoff-label { color:var(--text-muted); }
+.payoff-val { font-family:var(--font-mono); font-weight:500; }
+
+/* ─── VOL SURFACE TABLE ──────────────────────────────────────── */
+.vol-surface-table { width:100%; border-collapse:collapse; font-size:0.70rem; margin:0.75rem 0; }
+.vol-surface-table th { text-align:center; padding:0.4rem 0.5rem; color:var(--text-muted); font-size:0.58rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.vol-surface-table td { text-align:center; padding:0.45rem 0.5rem; border-bottom:1px solid var(--border-soft); }
+.vol-low { color:var(--green); }
+.vol-mid { color:var(--text); }
+.vol-high { color:var(--red); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>FX Opsiyon Masası</h1>
+      <p>Garman-Kohlhagen fiyatlama · Tam Yunanlar · Vol Surface · Strateji Yapılandırıcı</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TABS ══ -->
+<div class="desk-tabs">
+  <button class="desk-tab active" id="tab-vanilla" onclick="switchTab('vanilla')">🍦 Vanilla Option</button>
+  <button class="desk-tab" id="tab-strategy" onclick="switchTab('strategy')">📊 Stratejiler</button>
+  <button class="desk-tab" id="tab-surface" onclick="switchTab('surface')">〰 Vol Surface</button>
+  <button class="desk-tab" id="tab-greeks" onclick="switchTab('greeks')">📈 Greeks Monitor</button>
+</div>
+
+<!-- ══ TAB 1 — VANILLA OPTION ══ -->
+<div id="panel-vanilla">
+  <div class="grid-2">
+    <!-- LEFT: OPTION TICKET -->
+    <div class="card">
+      <div class="card-title">Option Ticket</div>
+      <div class="form-group">
+        <label class="form-label">Parite</label>
+        <select class="form-select" id="optPair">
+          <option value="USDTRY">USD/TRY</option>
+          <option value="EURTRY">EUR/TRY</option>
+          <option value="GBPTRY">GBP/TRY</option>
+          <option value="EURUSD">EUR/USD</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Option Tipi</label>
+        <select class="form-select" id="optType">
+          <option value="call">Alım Opsiyonu (Call)</option>
+          <option value="put">Satım Opsiyonu (Put)</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Aksiyon</label>
+        <select class="form-select" id="optDir">
+          <option value="buy">Al (Long)</option>
+          <option value="sell">Sat (Short)</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Spot Mid</label>
+          <input class="form-input" id="optSpot" type="number" step="0.0001" placeholder="38.50"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kullanım Fiyatı</label>
+          <input class="form-input" id="optStrike" type="number" step="0.0001" placeholder="39.00"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Vade (Gün)</label>
+        <select class="form-select" id="optTenorDays">
+          <option value="7">7</option>
+          <option value="14">14</option>
+          <option value="30" selected>30</option>
+          <option value="60">60</option>
+          <option value="90">90</option>
+          <option value="180">180</option>
+          <option value="270">270</option>
+          <option value="360">360</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Yurt İçi Faiz (TRY %)</label>
+          <input class="form-input" id="optRateDom" type="number" step="0.1" placeholder="46.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Yabancı Faiz (USD %)</label>
+          <input class="form-input" id="optRateFor" type="number" step="0.1" placeholder="4.33"/>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">İmplike Volatilite (%)</label>
+          <input class="form-input" id="optVol" type="number" step="0.5" placeholder="15.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nominal (USD)</label>
+          <input class="form-input" id="optNotional" type="number" placeholder="1000000"/>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.5rem">
+        <button class="btn btn-primary w-full" onclick="calcOption()">▶ Opsiyon Fiyatla</button>
+        <button class="btn btn-ghost" onclick="optSample()">Sample</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULT -->
+    <div id="optResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">🍦</div>
+        <p>Parametreleri girin, Opsiyon Fiyatla'ya tıklayın.<br>
+        European-style Garman-Kohlhagen fiyatı ve Yunanlar hesaplanacak.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 2 — STRATEGIES ══ -->
+<div id="panel-strategy" style="display:none">
+  <div class="grid-2">
+    <!-- LEFT: STRATEGY BUILDER -->
+    <div class="card">
+      <div class="card-title">Strateji Yapılandırıcı</div>
+      <div class="form-group">
+        <label class="form-label">Parite</label>
+        <select class="form-select" id="stPair">
+          <option value="USDTRY">USD/TRY</option>
+          <option value="EURTRY">EUR/TRY</option>
+          <option value="GBPTRY">GBP/TRY</option>
+          <option value="EURUSD">EUR/USD</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Strateji Tipi</label>
+        <select class="form-select" id="stType" onchange="updateStrategyFields()">
+          <option value="straddle">Straddle (ATM Alım)</option>
+          <option value="strangle">Strangle (OTM Alım)</option>
+          <option value="risk_reversal">Risk Reversal (Put Satış)</option>
+          <option value="butterfly">Butterfly (Orta Fiyat)</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Spot Mid</label>
+          <input class="form-input" id="stSpot" type="number" step="0.0001" placeholder="38.50"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ATM Strike</label>
+          <input class="form-input" id="stATMStrike" type="number" step="0.0001" placeholder="38.50"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">OTM Offset (%)</label>
+        <input class="form-input" id="stOffset" type="number" step="0.1" placeholder="2.0"/>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Vade (Gün)</label>
+        <select class="form-select" id="stTenor">
+          <option value="30">30</option>
+          <option value="60">60</option>
+          <option value="90" selected>90</option>
+          <option value="180">180</option>
+          <option value="360">360</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">TRY Faizi (%)</label>
+          <input class="form-input" id="stRateDom" type="number" step="0.1" placeholder="46.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">USD Faizi (%)</label>
+          <input class="form-input" id="stRateFor" type="number" step="0.1" placeholder="4.33"/>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Vol (%)</label>
+          <input class="form-input" id="stVol" type="number" step="0.5" placeholder="18.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nominal (USD)</label>
+          <input class="form-input" id="stNotional" type="number" placeholder="1000000"/>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.5rem">
+        <button class="btn btn-primary w-full" onclick="calcStrategy()">▶ Strateji Fiyatla</button>
+        <button class="btn btn-ghost" onclick="stSample()">Sample</button>
+      </div>
+    </div>
+
+    <!-- RIGHT: RESULT -->
+    <div id="stResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">📊</div>
+        <p>Strateji parametrelerini girin.<br>
+        Per-leg fiyatlama, net maliyet, breakeven seviyeleri gösterilecek.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 3 — VOL SURFACE ══ -->
+<div id="panel-surface" style="display:none">
+  <div class="card mb-2">
+    <div class="card-title">Vol Surface Parametreleri</div>
+    <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:0.75rem">
+      <div class="form-group">
+        <label class="form-label">Parite</label>
+        <select class="form-select" id="vsPair">
+          <option value="USDTRY">USD/TRY</option>
+          <option value="EURTRY">EUR/TRY</option>
+          <option value="EURUSD">EUR/USD</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">ATM Vol (%)</label>
+        <input class="form-input" id="vsATMVol" type="number" step="0.5" placeholder="18.0"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">TRY Faizi (%)</label>
+        <input class="form-input" id="vsRateDom" type="number" step="0.1" placeholder="46.0"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">USD Faizi (%)</label>
+        <input class="form-input" id="vsRateFor" type="number" step="0.1" placeholder="4.33"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Spot</label>
+        <input class="form-input" id="vsSpot" type="number" step="0.0001" placeholder="38.50"/>
+      </div>
+    </div>
+    <div style="display:flex; gap:0.5rem">
+      <button class="btn btn-primary" onclick="calcSurface()">▶ Surface Üret</button>
+      <button class="btn btn-ghost" onclick="vsSample()">Sample</button>
+    </div>
+  </div>
+
+  <div id="surfaceResult">
+    <div class="coming-soon" style="min-height:200px">
+      <div class="coming-soon-icon">〰</div>
+      <p>Vol surface parametrelerini girin.<br>
+      ATM vol, risk reversal, butterfly ve tenor yapısı gösterilecek.</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 4 — GREEKS MONITOR ══ -->
+<div id="panel-greeks" style="display:none">
+  <div class="grid-2">
+    <!-- LEFT: SCAN PARAMETERS -->
+    <div class="card">
+      <div class="card-title">Parametre Taraması</div>
+
+      <div class="form-group">
+        <label class="form-label">Parite</label>
+        <select class="form-select" id="gmPair">
+          <option value="USDTRY">USD/TRY</option>
+          <option value="EURTRY">EUR/TRY</option>
+          <option value="EURUSD">EUR/USD</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Spot</label>
+          <input class="form-input" id="gmSpot" type="number" step="0.0001" placeholder="38.50"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">ATM Vol (%)</label>
+          <input class="form-input" id="gmVol" type="number" step="0.5" placeholder="18.0"/>
+        </div>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">TRY Faizi (%)</label>
+          <input class="form-input" id="gmRateDom" type="number" step="0.1" placeholder="46.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">USD Faizi (%)</label>
+          <input class="form-input" id="gmRateFor" type="number" step="0.1" placeholder="4.33"/>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Vade (Gün)</label>
+        <select class="form-select" id="gmTenor">
+          <option value="30">30</option>
+          <option value="60">60</option>
+          <option value="90" selected>90</option>
+          <option value="180">180</option>
+        </select>
+      </div>
+
+      <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:0.5rem">
+        <div class="form-group">
+          <label class="form-label">Strike Min</label>
+          <input class="form-input" id="gmStrikeMin" type="number" step="0.0001" placeholder="36.00"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Strike Max</label>
+          <input class="form-input" id="gmStrikeMax" type="number" step="0.0001" placeholder="41.00"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Adım</label>
+          <input class="form-input" id="gmStep" type="number" step="0.0001" placeholder="0.25"/>
+        </div>
+      </div>
+
+      <div>
+        <label class="form-label" style="display:block;margin-bottom:0.4rem">Option Tipi</label>
+        <div class="toggle-buttons">
+          <button class="toggle-btn active" id="gmTypeCall" onclick="setGreeksType('call')">Call</button>
+          <button class="toggle-btn" id="gmTypePut" onclick="setGreeksType('put')">Put</button>
+        </div>
+      </div>
+
+      <button class="btn btn-primary w-full" onclick="runGreeksScan()">▶ Tarama Başlat</button>
+    </div>
+
+    <!-- RIGHT: RESULT -->
+    <div id="greeksResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">📈</div>
+        <p>Strike taraması parametrelerini girin.<br>
+        Delta/Gamma profili çizelgelenecek, table gösterilecek.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+let currentVolSurface = null;
+let currentGreeksType = 'call';
+
+/* ──────────────────────────────────────────────────────────────────
+   TAB SWITCHING
+────────────────────────────────────────────────────────────────────── */
+function switchTab(t) {
+  ['vanilla', 'strategy', 'surface', 'greeks'].forEach(x => {
+    document.getElementById('panel-' + x).style.display = x === t ? '' : 'none';
+    document.getElementById('tab-' + x).classList.toggle('active', x === t);
+  });
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   TAB 1 — VANILLA OPTION
+────────────────────────────────────────────────────────────────────── */
+function optSample() {
+  document.getElementById('optPair').value = 'USDTRY';
+  document.getElementById('optType').value = 'call';
+  document.getElementById('optDir').value = 'buy';
+  document.getElementById('optSpot').value = '38.50';
+  document.getElementById('optStrike').value = '39.00';
+  document.getElementById('optTenorDays').value = '90';
+  document.getElementById('optRateDom').value = '46.0';
+  document.getElementById('optRateFor').value = '4.33';
+  document.getElementById('optVol').value = '18.0';
+  document.getElementById('optNotional').value = '1000000';
+}
+
+async function calcOption() {
+  const payload = {
+    pair: document.getElementById('optPair').value,
+    option_type: document.getElementById('optType').value,
+    direction: document.getElementById('optDir').value,
+    spot: parseFloat(document.getElementById('optSpot').value),
+    strike: parseFloat(document.getElementById('optStrike').value),
+    tenor_days: parseInt(document.getElementById('optTenorDays').value),
+    r_dom: parseFloat(document.getElementById('optRateDom').value) / 100,
+    r_for: parseFloat(document.getElementById('optRateFor').value) / 100,
+    vol: parseFloat(document.getElementById('optVol').value) / 100,
+    notional: parseFloat(document.getElementById('optNotional').value) || 1000000,
+  };
+
+  if (!payload.spot || !payload.strike || !payload.vol) {
+    document.getElementById('optResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>Spot, Strike ve Vol gerekli.</p></div>`;
+    return;
+  }
+
+  document.getElementById('optResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Hesaplanıyor...</div>';
+
+  try {
+    const resp = await fetch('/api/options/price', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderOptionResult(d);
+  } catch (err) {
+    document.getElementById('optResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderOptionResult(d) {
+  const moneyness = d.moneyness || 'ATM';
+  const moneynessClass = moneyness === 'ITM' ? 'badge-itm' : moneyness === 'OTM' ? 'badge-otm' : 'badge-atm';
+
+  const actionLabel = d.direction === 'buy'
+    ? (d.option_type === 'call' ? 'LONG CALL' : 'LONG PUT')
+    : (d.option_type === 'call' ? 'SHORT CALL' : 'SHORT PUT');
+
+  const greeksHtml = `
+    <div class="greeks-grid">
+      <div class="greek-box">
+        <div class="greek-label">Delta</div>
+        <div class="greek-value">${(d.delta || 0).toFixed(4)}</div>
+      </div>
+      <div class="greek-box">
+        <div class="greek-label">Gamma</div>
+        <div class="greek-value">${(d.gamma || 0).toFixed(6)}</div>
+      </div>
+      <div class="greek-box">
+        <div class="greek-label">Vega</div>
+        <div class="greek-value">${(d.vega || 0).toFixed(4)}</div>
+      </div>
+      <div class="greek-box">
+        <div class="greek-label">Theta</div>
+        <div class="greek-value">${(d.theta || 0).toFixed(4)}</div>
+      </div>
+      <div class="greek-box">
+        <div class="greek-label">Rho (TRY)</div>
+        <div class="greek-value">${(d.rho_d || 0).toFixed(4)}</div>
+      </div>
+      <div class="greek-box">
+        <div class="greek-label">Rho (FOR)</div>
+        <div class="greek-value">${(d.rho_f || 0).toFixed(4)}</div>
+      </div>
+    </div>
+  `;
+
+  const premiumAbsolute = (d.price_per_unit || 0) * (d.notional || 1000000);
+  const premiumPct = d.price_pct || 0;
+
+  document.getElementById('optResult').innerHTML = `
+    <div class="result-card">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem">
+        <div>
+          <div style="font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.2rem">${d.pair} ${d.option_type === 'call' ? 'CALL' : 'PUT'}</div>
+          <div class="result-hero">${(d.price_per_unit || 0).toFixed(4)}</div>
+          <div style="font-size:0.65rem; color:var(--text-muted); margin-top:0.1rem">per unit (TRY)</div>
+        </div>
+        <div style="text-align:right">
+          <span class="badge ${moneynessClass}">${moneyness}</span>
+          <div style="margin-top:0.4rem">
+            <span class="action-badge ${d.direction === 'buy' ? 'long-' + d.option_type : 'short-' + d.option_type}">${actionLabel}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="result-row">
+        <span class="result-label">Premium (TRY)</span>
+        <span class="result-val">${premiumAbsolute.toLocaleString('tr-TR')} (${premiumPct.toFixed(2)}% of spot)</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Intrinsic Value</span>
+        <span class="result-val">${(d.intrinsic_value || 0).toFixed(4)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Time Value</span>
+        <span class="result-val">${(d.time_value || 0).toFixed(4)}</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Delta Notional</span>
+        <span class="result-val">${((d.delta || 0) * (d.notional || 1000000)).toLocaleString('tr-TR')} USD</span>
+      </div>
+      <div class="result-row">
+        <span class="result-label">Breakeven Rate</span>
+        <span class="result-val">${(d.breakeven_rate || 0).toFixed(4)}</span>
+      </div>
+
+      <hr class="sep"/>
+      <div style="font-size:0.65rem; font-weight:600; margin-bottom:0.4rem">Yunanlar</div>
+      ${greeksHtml}
+
+      <hr class="sep"/>
+      <div style="font-size:0.65rem; color:var(--text-muted); margin-bottom:0.3rem">Tarihler</div>
+      <div class="result-row">
+        <span class="result-label">Value Date</span>
+        <span class="result-val">${d.value_date || '—'}</span>
+      </div>
+      <div class="result-row" style="border:none">
+        <span class="result-label">Expiry Date</span>
+        <span class="result-val">${d.expiry_date || '—'}</span>
+      </div>
+
+      ${d.interpretation ? `
+        <div class="interpretation-box">
+          <strong>Yorum:</strong><br>${d.interpretation}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   TAB 2 — STRATEGIES
+────────────────────────────────────────────────────────────────────── */
+function updateStrategyFields() {
+  const type = document.getElementById('stType').value;
+  const atmField = document.getElementById('stATMStrike').parentElement.parentElement;
+  const offsetField = document.getElementById('stOffset').parentElement;
+
+  if (type === 'straddle') {
+    atmField.style.display = '';
+    offsetField.style.display = 'none';
+  } else {
+    atmField.style.display = '';
+    offsetField.style.display = '';
+  }
+}
+
+function stSample() {
+  document.getElementById('stPair').value = 'USDTRY';
+  document.getElementById('stType').value = 'straddle';
+  document.getElementById('stSpot').value = '38.50';
+  document.getElementById('stATMStrike').value = '38.50';
+  document.getElementById('stOffset').value = '2.0';
+  document.getElementById('stTenor').value = '90';
+  document.getElementById('stRateDom').value = '46.0';
+  document.getElementById('stRateFor').value = '4.33';
+  document.getElementById('stVol').value = '18.0';
+  document.getElementById('stNotional').value = '1000000';
+  updateStrategyFields();
+}
+
+async function calcStrategy() {
+  const payload = {
+    pair: document.getElementById('stPair').value,
+    strategy_type: document.getElementById('stType').value,
+    spot: parseFloat(document.getElementById('stSpot').value),
+    atm_strike: parseFloat(document.getElementById('stATMStrike').value),
+    otm_offset_pct: parseFloat(document.getElementById('stOffset').value) / 100,
+    tenor_days: parseInt(document.getElementById('stTenor').value),
+    r_dom: parseFloat(document.getElementById('stRateDom').value) / 100,
+    r_for: parseFloat(document.getElementById('stRateFor').value) / 100,
+    vol: parseFloat(document.getElementById('stVol').value) / 100,
+    notional: parseFloat(document.getElementById('stNotional').value) || 1000000,
+  };
+
+  if (!payload.spot || !payload.atm_strike) {
+    document.getElementById('stResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>Spot ve ATM Strike gerekli.</p></div>`;
+    return;
+  }
+
+  document.getElementById('stResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Hesaplanıyor...</div>';
+
+  try {
+    const resp = await fetch('/api/options/strategy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderStrategyResult(d);
+  } catch (err) {
+    document.getElementById('stResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderStrategyResult(d) {
+  const legsHtml = (d.legs || []).map((leg, idx) => {
+    const dirClass = leg.direction === 'buy' ? 'dir-buy' : 'dir-sell';
+    const dirLabel = leg.direction === 'buy' ? 'BUY' : 'SELL';
+    return `<tr>
+      <td style="font-weight:500">${idx + 1}</td>
+      <td style="text-transform:uppercase">${leg.option_type}</td>
+      <td><span style="padding:2px 6px; border-radius:3px; font-size:0.6rem; font-weight:600; ${dirClass}">${dirLabel}</span></td>
+      <td class="r" style="font-family:var(--font-mono)">${leg.strike.toFixed(4)}</td>
+      <td class="r" style="font-family:var(--font-mono)">${(leg.delta || 0).toFixed(4)}</td>
+      <td class="r" style="font-family:var(--font-mono)">${(leg.price_per_unit || 0).toFixed(4)}</td>
+      <td class="r">${((leg.price_per_unit || 0) * (d.notional || 1000000)).toLocaleString('tr-TR')}</td>
+    </tr>`;
+  }).join('');
+
+  const breakevenHtml = d.breakevens ? `
+    <div class="payoff-box">
+      ${d.breakevens.lower ? `<div class="payoff-row">
+        <span class="payoff-label">Lower Breakeven</span>
+        <span class="payoff-val">${d.breakevens.lower.toFixed(4)}</span>
+      </div>` : ''}
+      ${d.breakevens.upper ? `<div class="payoff-row">
+        <span class="payoff-label">Upper Breakeven</span>
+        <span class="payoff-val">${d.breakevens.upper.toFixed(4)}</span>
+      </div>` : ''}
+    </div>
+  ` : '';
+
+  document.getElementById('stResult').innerHTML = `
+    <div class="result-card">
+      <div style="font-size:0.62rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.4rem">${d.pair} — ${d.strategy_type.toUpperCase()}</div>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:0.75rem">
+        <div>
+          <div style="font-size:0.65rem; color:var(--text-muted)">Net Cost</div>
+          <div class="result-hero" style="color:${d.net_cost < 0 ? 'var(--green)' : 'var(--red)'}">${d.net_cost.toFixed(4)}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:0.65rem; color:var(--text-muted)">Net Delta</div>
+          <div style="font-family:var(--font-head); font-size:1.3rem; color:var(--text)">${(d.net_delta || 0).toFixed(4)}</div>
+        </div>
+      </div>
+
+      <hr class="sep"/>
+      <div style="font-size:0.65rem; font-weight:600; margin-bottom:0.4rem">Legs</div>
+      <table class="strat-legs-table">
+        <thead><tr><th>#</th><th>Type</th><th>Dir</th><th class="r">Strike</th><th class="r">Delta</th><th class="r">Price</th><th class="r">Cost</th></tr></thead>
+        <tbody>${legsHtml}</tbody>
+      </table>
+
+      ${breakevenHtml}
+
+      ${d.max_profit || d.max_loss ? `
+        <div class="payoff-box">
+          ${d.max_profit !== undefined ? `<div class="payoff-row">
+            <span class="payoff-label">Max Profit</span>
+            <span class="payoff-val" style="color:var(--green)">${d.max_profit.toFixed(4)}</span>
+          </div>` : ''}
+          ${d.max_loss !== undefined ? `<div class="payoff-row">
+            <span class="payoff-label">Max Loss</span>
+            <span class="payoff-val" style="color:var(--red)">${d.max_loss.toFixed(4)}</span>
+          </div>` : ''}
+        </div>
+      ` : ''}
+
+      ${d.interpretation ? `
+        <div class="interpretation-box">
+          <strong>Strateji Özeti:</strong><br>${d.interpretation}
+        </div>
+      ` : ''}
+    </div>
+  `;
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   TAB 3 — VOL SURFACE
+────────────────────────────────────────────────────────────────────── */
+function vsSample() {
+  document.getElementById('vsPair').value = 'USDTRY';
+  document.getElementById('vsATMVol').value = '18.0';
+  document.getElementById('vsRateDom').value = '46.0';
+  document.getElementById('vsRateFor').value = '4.33';
+  document.getElementById('vsSpot').value = '38.50';
+}
+
+async function calcSurface() {
+  const payload = {
+    pair: document.getElementById('vsPair').value,
+    atm_vol: parseFloat(document.getElementById('vsATMVol').value) / 100,
+    r_dom: parseFloat(document.getElementById('vsRateDom').value) / 100,
+    r_for: parseFloat(document.getElementById('vsRateFor').value) / 100,
+    spot: parseFloat(document.getElementById('vsSpot').value),
+  };
+
+  if (!payload.spot || !payload.atm_vol) {
+    document.getElementById('surfaceResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>Spot ve ATM Vol gerekli.</p></div>`;
+    return;
+  }
+
+  document.getElementById('surfaceResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Surface üretiliyor...</div>';
+
+  try {
+    const resp = await fetch('/api/options/vol-surface', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    currentVolSurface = d;
+    renderSurface(d);
+  } catch (err) {
+    document.getElementById('surfaceResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderSurface(d) {
+  const rows = (d.surface || []).map(r => {
+    const volClass = r.vol > 20 ? 'vol-high' : r.vol < 15 ? 'vol-low' : 'vol-mid';
+    return `<tr>
+      <td>${r.tenor}</td>
+      <td class="${volClass}">${r.atm_vol.toFixed(2)}%</td>
+      <td>${(r.rr_25d || 0).toFixed(2)}%</td>
+      <td>${(r.bf_25d || 0).toFixed(2)}%</td>
+      <td>${(r.call_vol_25d || 0).toFixed(2)}%</td>
+      <td>${(r.put_vol_25d || 0).toFixed(2)}%</td>
+    </tr>`;
+  }).join('');
+
+  const chartData = (d.surface || []).map(r => ({
+    tenor: r.tenor,
+    tenor_days: r.tenor_days,
+    vol: r.atm_vol
+  }));
+
+  document.getElementById('surfaceResult').innerHTML = `
+    <div class="card mb-2">
+      <div class="card-title">Vol Term Structure</div>
+      <table class="vol-surface-table">
+        <thead>
+          <tr>
+            <th>Tenor</th>
+            <th>ATM Vol</th>
+            <th>25d RR</th>
+            <th>25d Butterfly</th>
+            <th>Call Vol</th>
+            <th>Put Vol</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+
+    <div class="chart-container">
+      <div id="surfaceChart" style="height:300px;"></div>
+    </div>
+
+    ${d.interpretation ? `
+      <div class="interpretation-box">
+        <strong>Market Commentary:</strong><br>${d.interpretation}
+      </div>
+    ` : ''}
+  `;
+
+  // Render Plotly chart
+  const trace = {
+    x: chartData.map(x => x.tenor),
+    y: chartData.map(x => x.vol),
+    mode: 'lines+markers',
+    name: 'ATM Vol',
+    line: { color: '#2563eb', width: 2 },
+    marker: { size: 6, color: '#2563eb' }
+  };
+
+  const layout = {
+    title: 'ATM Volatility Term Structure',
+    xaxis: { title: 'Tenor' },
+    yaxis: { title: 'Volatility (%)' },
+    plot_bgcolor: '#08090d',
+    paper_bgcolor: '#08090d',
+    font: { color: '#94a3b8', family: 'DM Mono' },
+    margin: { l: 50, r: 50, t: 40, b: 40 }
+  };
+
+  const config = { responsive: true, displayModeBar: false };
+  Plotly.newPlot('surfaceChart', [trace], layout, config);
+}
+
+/* ──────────────────────────────────────────────────────────────────
+   TAB 4 — GREEKS MONITOR
+────────────────────────────────────────────────────────────────────── */
+function setGreeksType(t) {
+  currentGreeksType = t;
+  document.getElementById('gmTypeCall').classList.toggle('active', t === 'call');
+  document.getElementById('gmTypePut').classList.toggle('active', t === 'put');
+}
+
+async function runGreeksScan() {
+  const spot = parseFloat(document.getElementById('gmSpot').value);
+  const stMin = parseFloat(document.getElementById('gmStrikeMin').value);
+  const stMax = parseFloat(document.getElementById('gmStrikeMax').value);
+  const step = parseFloat(document.getElementById('gmStep').value);
+
+  if (!spot || !stMin || !stMax || !step) {
+    document.getElementById('greeksResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>Spot, Min, Max ve Adım gerekli.</p></div>`;
+    return;
+  }
+
+  // Build strike array
+  const strikes = [];
+  for (let s = stMin; s <= stMax + 0.00001; s += step) {
+    strikes.push(parseFloat(s.toFixed(4)));
+  }
+
+  const payload = {
+    pair: document.getElementById('gmPair').value,
+    spot: spot,
+    strikes: strikes,
+    tenor_days: parseInt(document.getElementById('gmTenor').value),
+    r_dom: parseFloat(document.getElementById('gmRateDom').value) / 100,
+    r_for: parseFloat(document.getElementById('gmRateFor').value) / 100,
+    vol: parseFloat(document.getElementById('gmVol').value) / 100,
+    option_type: currentGreeksType
+  };
+
+  document.getElementById('greeksResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Tarama yapılıyor...</div>';
+
+  try {
+    const resp = await fetch('/api/options/greeks-scan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderGreeksScan(d);
+  } catch (err) {
+    document.getElementById('greeksResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderGreeksScan(d) {
+  const results = d.results || [];
+  const atmStrike = d.atm_strike;
+
+  const tableRows = results.map(r => {
+    const isATM = Math.abs(r.strike - atmStrike) < 0.001;
+    return `<tr ${isATM ? 'style="background:rgba(37,99,235,0.1)"' : ''}>
+      <td style="font-family:var(--font-mono);${isATM ? 'font-weight:600' : ''}">${r.strike.toFixed(4)}</td>
+      <td class="num" style="font-family:var(--font-mono)">${r.delta.toFixed(4)}</td>
+      <td class="num" style="font-family:var(--font-mono)">${r.gamma.toFixed(6)}</td>
+      <td class="num" style="font-family:var(--font-mono)">${r.vega.toFixed(4)}</td>
+      <td class="num" style="font-family:var(--font-mono)">${r.theta.toFixed(4)}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('greeksResult').innerHTML = `
+    <div class="chart-container">
+      <div id="greeksChart" style="height:350px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Greeks Table</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Strike</th>
+            <th class="num">Delta</th>
+            <th class="num">Gamma</th>
+            <th class="num">Vega</th>
+            <th class="num">Theta</th>
+          </tr>
+        </thead>
+        <tbody>${tableRows}</tbody>
+      </table>
+    </div>
+  `;
+
+  // Plot Greeks
+  const trace1 = {
+    x: results.map(r => r.strike),
+    y: results.map(r => r.delta),
+    name: 'Delta',
+    mode: 'lines+markers',
+    line: { color: '#2563eb', width: 2 },
+    marker: { size: 5 },
+    yaxis: 'y1'
+  };
+
+  const trace2 = {
+    x: results.map(r => r.strike),
+    y: results.map(r => r.gamma),
+    name: 'Gamma',
+    mode: 'lines+markers',
+    line: { color: '#f59e0b', width: 2 },
+    marker: { size: 5 },
+    yaxis: 'y2'
+  };
+
+  const layout = {
+    title: `Greeks Profile — ${d.pair} ${currentGreeksType.toUpperCase()}`,
+    xaxis: { title: 'Strike' },
+    yaxis: { title: 'Delta', side: 'left' },
+    yaxis2: { title: 'Gamma', side: 'right', overlaying: 'y' },
+    plot_bgcolor: '#08090d',
+    paper_bgcolor: '#08090d',
+    font: { color: '#94a3b8', family: 'DM Mono' },
+    margin: { l: 60, r: 60, t: 40, b: 40 },
+    hovermode: 'x unified'
+  };
+
+  const config = { responsive: true, displayModeBar: false };
+  Plotly.newPlot('greeksChart', [trace1, trace2], layout, config);
+}
+
+// Initialize
+updateStrategyFields();
+</script>
+{% endblock %}

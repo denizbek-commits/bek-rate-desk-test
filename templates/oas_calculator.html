@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% block title %}OAS Calculator — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display: grid; grid-template-columns: 300px 1fr; gap: 1rem; align-items: start; }
+.add-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 2; }
+.metric-row { display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0; border-bottom: 1px solid var(--border-soft); font-size: 0.72rem; }
+.metric-label { color: var(--text-muted); }
+.metric-val   { font-family: var(--font-mono); font-weight: 500; }
+.metric-val.accent { color: var(--accent); }
+.metric-val.gold   { color: var(--gold); }
+.metric-val.green  { color: var(--green); }
+.metric-val.red    { color: var(--red); }
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.cf-table { width: 100%; border-collapse: collapse; font-size: 0.68rem; }
+.cf-table th { text-align: left; padding: 0.3rem 0.5rem; color: var(--text-muted); font-size: 0.58rem; text-transform: uppercase; letter-spacing: 0.06em; border-bottom: 1px solid var(--border); font-weight: 400; }
+.cf-table td { padding: 0.3rem 0.5rem; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); }
+.cf-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.fred-btn { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(245,158,11,0.3); }
+.fred-btn:hover { background: rgba(245,158,11,0.2); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>OAS Calculator</h1>
+      <p>Option-Adjusted Spread — binomial tree pricer with FRED treasury curve, MOVE index vol, rating-matched credit spreads</p>
+    </div>
+    <button class="btn fred-btn" onclick="fetchFRED()">⬇ FRED Calibrate</button>
+  </div>
+</div>
+
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Instrument</div>
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Ticker / Name</label><input class="form-input" id="oTicker" placeholder="e.g. JPM-PD"/></div>
+        <div class="form-group"><label class="form-label">Par Value</label><input class="form-input" id="oPar" type="number" value="25"/></div>
+        <div class="form-group"><label class="form-label">Market Price</label><input class="form-input" id="oPrice" type="number" step="0.01" value="24.50"/></div>
+        <div class="form-group"><label class="form-label">Coupon Rate (%)</label><input class="form-input" id="oCoupon" type="number" step="0.01" value="6.25"/></div>
+        <div class="form-group"><label class="form-label">Call Price</label><input class="form-input" id="oCallPrice" type="number" value="25"/></div>
+        <div class="form-group"><label class="form-label">Years to Call</label><input class="form-input" id="oCallYears" type="number" step="0.5" value="3.0"/></div>
+        <div class="form-group"><label class="form-label">Years to Maturity</label><input class="form-input" id="oMatYears" type="number" step="1" value="30"/></div>
+        <div class="form-group"><label class="form-label">Freq/year</label>
+          <select class="form-select" id="oFreq">
+            <option value="4" selected>Quarterly</option><option value="2">Semi</option>
+            <option value="12">Monthly</option><option value="1">Annual</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Credit Rating</label>
+          <select class="form-select" id="oRating">
+            <option value="AAA">AAA</option><option value="AA">AA</option>
+            <option value="A">A</option><option value="BBB" selected>BBB</option>
+            <option value="BB">BB</option><option value="B">B</option><option value="CCC">CCC</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rate Vol σ (%)</label>
+          <input class="form-input" id="oSigma" type="number" step="0.01" placeholder="auto-FRED"/>
+        </div>
+        <div class="form-group full">
+          <label class="form-label">Credit Spread (%)</label>
+          <input class="form-input" id="oSpread" type="number" step="0.01" placeholder="auto-FRED"/>
+        </div>
+        <div class="form-group full">
+          <label class="toggle-row" style="gap:0.5rem">
+            <label class="toggle"><input type="checkbox" id="oPreferred" checked/><span class="toggle-slider"></span></label>
+            <span class="toggle-label">Preferred stock (+175bps structural premium)</span>
+          </label>
+        </div>
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="runOAS()">▶ Calculate OAS</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadSample()">Load Sample</button>
+    </div>
+
+    <div class="card" id="fredStatus" style="display:none">
+      <div class="card-title">FRED Calibration</div>
+      <div id="fredContent" style="font-size:0.72rem"></div>
+    </div>
+  </div>
+
+  <div id="resultsPanel">
+    <div class="coming-soon"><div class="coming-soon-icon">🌳</div><h2>OAS Calculator</h2>
+    <p>Enter instrument details, optionally click FRED Calibrate to auto-fill vol and spread, then Calculate OAS.</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadSample() {
+  document.getElementById('oTicker').value    = 'JPM-PD';
+  document.getElementById('oPar').value       = '25';
+  document.getElementById('oPrice').value     = '24.50';
+  document.getElementById('oCoupon').value    = '6.25';
+  document.getElementById('oCallPrice').value = '25';
+  document.getElementById('oCallYears').value = '3.0';
+  document.getElementById('oMatYears').value  = '30';
+  document.getElementById('oFreq').value      = '4';
+  document.getElementById('oRating').value    = 'BBB';
+  document.getElementById('oPreferred').checked = true;
+}
+
+async function fetchFRED() {
+  document.getElementById('fredStatus').style.display = '';
+  document.getElementById('fredContent').innerHTML =
+    '<div class="loading" style="padding:0.5rem"><div class="spinner"></div> Fetching FRED data...</div>';
+  try {
+    const resp = await fetch('/api/oas/fred-curves', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({rating: document.getElementById('oRating').value})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+
+    // Auto-fill sigma and spread
+    if (d.rate_vol?.rate_vol) {
+      document.getElementById('oSigma').value = (d.rate_vol.rate_vol * 100).toFixed(3);
+    }
+    if (d.credit_spread?.spread_pct) {
+      document.getElementById('oSpread').value = d.credit_spread.spread_pct.toFixed(3);
+    }
+
+    const curveRows = Object.entries(d.treasury_curve || {}).map(([t,r]) =>
+      `<span style="margin-right:1rem">${t}: <strong>${(r*100).toFixed(2)}%</strong></span>`).join('');
+
+    document.getElementById('fredContent').innerHTML = `
+      <div style="margin-bottom:0.5rem;color:var(--text-dim)">Treasury curve fetched. Fields auto-filled.</div>
+      <div style="font-size:0.65rem;color:var(--text-muted);flex-wrap:wrap;display:flex">${curveRows}</div>
+      <div style="margin-top:0.4rem;font-size:0.68rem">
+        MOVE index: <span style="color:var(--gold)">${d.rate_vol?.move_index ?? '—'}</span> →
+        σ = <span style="color:var(--accent)">${d.rate_vol?.vol_pct?.toFixed(3) ?? '—'}%</span>
+        (${d.rate_vol?.regime ?? '—'}) &nbsp;|&nbsp;
+        Credit spread (${document.getElementById('oRating').value}${document.getElementById('oPreferred').checked?', +175bps pref':''}):
+        <span style="color:var(--green)">${d.credit_spread?.spread_pct?.toFixed(3) ?? '—'}%</span>
+      </div>`;
+  } catch(err) {
+    document.getElementById('fredContent').innerHTML = `<span style="color:var(--red)">${err.message}</span>`;
+  }
+}
+
+async function runOAS() {
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Running binomial tree — solving OAS via bisection...</div>';
+  const sigma_raw  = document.getElementById('oSigma').value;
+  const spread_raw = document.getElementById('oSpread').value;
+  const payload = {
+    market_price:   parseFloat(document.getElementById('oPrice').value),
+    par:            parseFloat(document.getElementById('oPar').value),
+    coupon_rate:    parseFloat(document.getElementById('oCoupon').value),
+    call_price:     parseFloat(document.getElementById('oCallPrice').value),
+    call_years:     parseFloat(document.getElementById('oCallYears').value),
+    maturity_years: parseFloat(document.getElementById('oMatYears').value),
+    freq:           parseInt(document.getElementById('oFreq').value),
+    rating:         document.getElementById('oRating').value,
+    is_preferred:   document.getElementById('oPreferred').checked,
+    ...(sigma_raw  ? {sigma:          parseFloat(sigma_raw)  / 100} : {}),
+    ...(spread_raw ? {credit_spread:  parseFloat(spread_raw) / 100} : {}),
+  };
+  try {
+    const resp = await fetch('/api/oas/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderResults(d);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderResults(d) {
+  const ticker = document.getElementById('oTicker').value || 'Bond';
+
+  const cfCallRows = d.cashflows.callable.map(cf =>
+    `<tr><td class="r">${cf.period}</td><td class="r">${cf.time.toFixed(2)}Y</td>
+     <td class="r">${cf.cashflow.toFixed(4)}</td>
+     <td style="font-size:0.6rem;color:var(--text-muted)">${cf.event}</td></tr>`).join('');
+  const cfNCRows = d.cashflows.noncallable.slice(0,12).map(cf =>
+    `<tr><td class="r">${cf.period}</td><td class="r">${cf.time.toFixed(2)}Y</td>
+     <td class="r">${cf.cashflow.toFixed(4)}</td>
+     <td style="font-size:0.6rem;color:var(--text-muted)">${cf.event}</td></tr>`).join('');
+
+  const curveRows = Object.entries(d.treasury_curve).map(([t,r]) =>
+    `<div class="metric-row"><span class="metric-label">${t}</span><span class="metric-val">${r}%</span></div>`).join('');
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">OAS</div><div class="stat-value accent">${d.oas_bps}bps</div><div class="stat-sub">Option-Adjusted Spread</div></div>
+      <div class="stat-box"><div class="stat-label">Option Cost</div><div class="stat-value">${d.option_cost_bps}bps</div><div class="stat-sub">NC price − Callable price</div></div>
+      <div class="stat-box"><div class="stat-label">Z-Spread</div><div class="stat-value gold">${d.z_spread_bps}bps</div><div class="stat-sub">OAS + credit spread</div></div>
+      <div class="stat-box"><div class="stat-label">Redemption Prob</div><div class="stat-value">${d.redemption_prob_pct}%</div><div class="stat-sub">Avg call: ${d.avg_call_year}Y</div></div>
+      <div class="stat-box"><div class="stat-label">Credit Spread</div><div class="stat-value green">${d.credit_spread_bps}bps</div><div class="stat-sub">${d.rating} + pref premium</div></div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">${ticker} — OAS Detail</div>
+        <div class="metric-row"><span class="metric-label">Market price</span><span class="metric-val accent">${d.market_price}</span></div>
+        <div class="metric-row"><span class="metric-label">Par</span><span class="metric-val">${d.par}</span></div>
+        <div class="metric-row"><span class="metric-label">Coupon rate</span><span class="metric-val">${d.coupon_rate_pct}%</span></div>
+        <div class="metric-row"><span class="metric-label">Call years</span><span class="metric-val">${d.call_years}Y</span></div>
+        <div class="metric-row"><span class="metric-label">Call price</span><span class="metric-val">${d.call_price}</span></div>
+        <hr class="sep"/>
+        <div class="metric-row"><span class="metric-label">OAS</span><span class="metric-val accent">${d.oas_bps}bps</span></div>
+        <div class="metric-row"><span class="metric-label">Option cost</span><span class="metric-val">${d.option_cost_bps}bps</span></div>
+        <div class="metric-row"><span class="metric-label">Callable price (at OAS)</span><span class="metric-val">${d.price_callable.toFixed(4)}</span></div>
+        <div class="metric-row"><span class="metric-label">Non-callable price (at OAS)</span><span class="metric-val">${d.price_noncallable.toFixed(4)}</span></div>
+        <div class="metric-row"><span class="metric-label">Short rate r₀</span><span class="metric-val">${d.r0_pct}%</span></div>
+        <div class="metric-row"><span class="metric-label">Rate vol σ (MOVE: ${d.move_index})</span><span class="metric-val">${d.sigma_pct}% — ${d.vol_regime}</span></div>
+        <div class="metric-row" style="border:none"><span class="metric-label">Redemption probability</span><span class="metric-val red">${d.redemption_prob_pct}% (avg call ${d.avg_call_year}Y)</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Treasury Curve (FRED)</div>
+        ${curveRows}
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Callable Cashflow Path</div>
+        <table class="cf-table">
+          <thead><tr><th class="r">Per</th><th class="r">Time</th><th class="r">CF</th><th>Event</th></tr></thead>
+          <tbody>${cfCallRows}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Non-Callable Path (first 12)</div>
+        <table class="cf-table">
+          <thead><tr><th class="r">Per</th><th class="r">Time</th><th class="r">CF</th><th>Event</th></tr></thead>
+          <tbody>${cfNCRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+</script>
+{% endblock %}

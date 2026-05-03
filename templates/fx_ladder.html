@@ -1,0 +1,298 @@
+{% extends 'base.html' %}
+{% block title %}FX Liquidity Ladder — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.ccy-tabs { display:flex; gap:0.4rem; margin-bottom:1rem; }
+.ccy-btn  { padding:0.4rem 1.1rem; font-size:0.72rem; font-family:var(--font-mono); border-radius:var(--radius); border:1px solid var(--border); background:transparent; color:var(--text-muted); cursor:pointer; transition:all 0.15s; }
+.ccy-btn.active { color:var(--text); border-color:var(--accent); background:var(--accent-glow); }
+.ccy-tl  .ccy-btn.active { border-color:var(--gold);   background:rgba(245,158,11,.12); color:var(--gold); }
+.ccy-usd .ccy-btn.active { border-color:var(--green);  background:rgba(16,185,129,.12); color:var(--green); }
+.ccy-eur .ccy-btn.active { border-color:var(--accent);  background:rgba(37,99,235,.12); color:var(--accent); }
+.ladder-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.ladder-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.ladder-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.ladder-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.ladder-table .pos { color:var(--green); }
+.ladder-table .neg { color:var(--red); }
+.survival-badge { display:inline-flex; align-items:center; gap:0.4rem; padding:0.3rem 0.8rem; border-radius:var(--radius); font-family:var(--font-head); font-size:0.73rem; font-weight:700; }
+.surv-ok    { background:rgba(16,185,129,.15);  color:var(--green);  border:1px solid rgba(16,185,129,.3); }
+.surv-warn  { background:rgba(245,158,11,.15);  color:var(--gold);   border:1px solid rgba(245,158,11,.3); }
+.surv-crit  { background:rgba(239,68,68,.15);   color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.pos-row { display:grid; grid-template-columns:1fr 70px 65px 70px 70px 22px; gap:0.3rem; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.3rem 0.5rem; font-size:0.65rem; margin-bottom:0.25rem; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+.type-badge { font-size:0.56rem; padding:1px 5px; border-radius:3px; font-weight:600; }
+.t-in   { background:rgba(16,185,129,.15); color:var(--green); }
+.t-out  { background:rgba(239,68,68,.15);  color:var(--red); }
+.t-swap { background:rgba(245,158,11,.15); color:var(--gold); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>FX Liquidity Ladder</h1>
+      <p>TL / USD / EUR vade merdiveni — inflow/outflow, swap rollover, stres senaryosu, survival horizon</p>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-ghost"   onclick="loadSampleData()">Sample Portföy</button>
+      <button class="btn btn-primary" onclick="buildLadder()">▶ Hesapla</button>
+    </div>
+  </div>
+</div>
+
+<div class="grid-2 mb-2" style="grid-template-columns:320px 1fr">
+  <!-- Sol: Pozisyon girişi -->
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Kur Girdileri</div>
+      <div class="form-group"><label class="form-label">USD/TRY</label><input class="form-input" id="usdtry" type="number" step="0.01" value="38.10"/></div>
+      <div class="form-group"><label class="form-label">EUR/TRY</label><input class="form-input" id="eurtry" type="number" step="0.01" value="42.20"/></div>
+      <div class="form-group"><label class="form-label">Stres Çıkış Artışı (%)</label><input class="form-input" id="stressPct" type="number" value="30"/></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pozisyon Ekle</div>
+      <div class="form-group"><label class="form-label">Açıklama</label><input class="form-input" id="pName" placeholder="e.g. TL 3M Vadeli Mevduat"/></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
+        <div class="form-group"><label class="form-label">CCY</label>
+          <select class="form-select" id="pCCY"><option value="TL">TL</option><option value="USD">USD</option><option value="EUR">EUR</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Tip</label>
+          <select class="form-select" id="pType">
+            <option value="inflow">Inflow (varlık)</option>
+            <option value="outflow">Outflow (yükümlülük)</option>
+            <option value="swap_in">Swap Inflow</option>
+            <option value="swap_out">Swap Outflow</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Tutar</label><input class="form-input" id="pAmount" type="number"/></div>
+        <div class="form-group"><label class="form-label">Vade (gün)</label><input class="form-input" id="pDays" type="number" value="90"/></div>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;margin:0">
+        <label class="toggle"><input type="checkbox" id="pSwapRoll"/><span class="toggle-slider"></span></label>
+        <span class="toggle-label" style="font-size:0.7rem">Swap rollover riski</span>
+      </div>
+      <button class="btn btn-ghost w-full" style="margin-top:0.5rem" onclick="addPosition()">+ Ekle</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Pozisyonlar (<span id="posCount">0</span>)</div>
+      <div id="posList" style="max-height:260px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- Sağ: Sonuçlar -->
+  <div id="ladderResults">
+    <div class="coming-soon"><div class="coming-soon-icon">🪜</div><h2>FX Liquidity Ladder</h2>
+    <p>"Sample Portföy" ile hızlı başlayın veya pozisyon ekleyerek kendi bilançonuzu girin.</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let positions = [];
+let activeCCY = 'TL';
+
+function addPosition() {
+  const name   = document.getElementById('pName').value.trim();
+  const amount = parseFloat(document.getElementById('pAmount').value);
+  const days   = parseFloat(document.getElementById('pDays').value);
+  if (!name || isNaN(amount)) { alert('Açıklama ve Tutar zorunlu.'); return; }
+  positions.push({
+    name, amount, maturity_days: days,
+    ccy:            document.getElementById('pCCY').value,
+    type:           document.getElementById('pType').value,
+    is_swap_rollover: document.getElementById('pSwapRoll').checked,
+  });
+  renderPositions();
+  document.getElementById('pName').value   = '';
+  document.getElementById('pAmount').value = '';
+}
+
+function removePos(i) { positions.splice(i,1); renderPositions(); }
+
+function renderPositions() {
+  document.getElementById('posCount').textContent = positions.length;
+  const typeCls = {inflow:'t-in',outflow:'t-out',swap_in:'t-swap',swap_out:'t-swap'};
+  const typeLbl = {inflow:'IN',outflow:'OUT',swap_in:'SWP↓',swap_out:'SWP↑'};
+  document.getElementById('posList').innerHTML = positions.map((p,i)=>`
+    <div class="pos-row">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${p.name}</span>
+      <span style="text-align:right;font-family:var(--font-mono)">${p.amount}</span>
+      <span class="type-badge ${typeCls[p.type]||''}">${typeLbl[p.type]||p.type}</span>
+      <span style="text-align:right;color:var(--text-muted)">${p.ccy}</span>
+      <span style="text-align:right;color:var(--text-muted)">${p.maturity_days}g</span>
+      <button style="background:none;border:none;color:var(--text-muted);cursor:pointer" onclick="removePos(${i})">×</button>
+    </div>`).join('');
+}
+
+async function loadSampleData() {
+  const resp = await fetch('/api/fx-ladder/sample');
+  const d = await resp.json();
+  positions = d.positions || [];
+  document.getElementById('usdtry').value   = d.usdtry || 38.10;
+  document.getElementById('eurtry').value   = d.eurtry || 42.20;
+  document.getElementById('stressPct').value= d.stress_outflow_pct || 30;
+  renderPositions();
+}
+
+async function buildLadder() {
+  if (!positions.length) { alert('Pozisyon ekleyin veya Sample Portföy yükleyin.'); return; }
+  document.getElementById('ladderResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> FX likidite merdiveni hesaplanıyor...</div>';
+  try {
+    const resp = await fetch('/api/fx-ladder/build', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        positions,
+        usdtry:             parseFloat(document.getElementById('usdtry').value),
+        eurtry:             parseFloat(document.getElementById('eurtry').value),
+        stress_outflow_pct: parseFloat(document.getElementById('stressPct').value),
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderLadder(d);
+  } catch(err) {
+    document.getElementById('ladderResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function survivalCls(h) {
+  const order = ['O/N','1W','1M','3M','6M','1Y','2Y+'];
+  const idx = order.indexOf(h);
+  if (idx >= 5) return 'surv-ok';
+  if (idx >= 3) return 'surv-warn';
+  return 'surv-crit';
+}
+
+function renderLadder(d) {
+  const ccys = ['TL','USD','EUR'];
+  const cNames = {TL:'🇹🇷 TL',USD:'🇺🇸 USD',EUR:'🇪🇺 EUR'};
+  const cColors = {TL:'var(--gold)',USD:'var(--green)',EUR:'var(--accent)'};
+
+  // KPI strip — per CCY summary
+  const kpiHTML = ccys.map(c => {
+    const cd = d.ccys[c];
+    if (!cd) return '';
+    return `<div class="stat-box">
+      <div class="stat-label">${cNames[c]} Net</div>
+      <div class="stat-value" style="color:${cd.net_position>=0?cColors[c]:'var(--red)'}">${cd.net_position>=0?'+':''}${cd.net_position}</div>
+      <div class="stat-sub">Survival: <span class="survival-badge ${survivalCls(cd.survival_horizon)}" style="font-size:0.58rem;padding:1px 6px">${cd.survival_horizon}</span></div>
+    </div>`;
+  }).join('');
+
+  // Tabs
+  const tabHTML = ccys.map(c =>
+    `<button class="ccy-btn ${c===activeCCY?'active':''}" onclick="switchCCY('${c}')">${cNames[c]}</button>`
+  ).join('');
+
+  // Build ladder tables for each CCY
+  const ladderTables = ccys.map(c => {
+    const cd = d.ccys[c];
+    if (!cd) return '';
+    const rows = cd.ladder.map(r => {
+      const gapCls  = r.gap >= 0 ? 'pos' : 'neg';
+      const cumCls  = r.cumulative_gap >= 0 ? 'pos' : 'neg';
+      const sCls    = r.stress_cum >= 0 ? 'pos' : 'neg';
+      return `<tr>
+        <td style="font-weight:500;color:${cColors[c]}">${r.bucket}</td>
+        <td class="r pos">${r.inflow.toFixed(1)}</td>
+        <td class="r neg">${r.outflow.toFixed(1)}</td>
+        <td class="r" style="color:var(--gold)">${r.swap_inflow>0?r.swap_inflow.toFixed(1):'—'}</td>
+        <td class="r" style="color:var(--gold)">${r.swap_outflow>0?r.swap_outflow.toFixed(1):'—'}</td>
+        <td class="r ${gapCls}">${r.gap>=0?'+':''}${r.gap.toFixed(1)}</td>
+        <td class="r ${cumCls}">${r.cumulative_gap>=0?'+':''}${r.cumulative_gap.toFixed(1)}</td>
+        <td class="r ${sCls}">${r.stress_cum>=0?'+':''}${r.stress_cum.toFixed(1)}</td>
+      </tr>`;
+    }).join('');
+    return `<div id="panel-${c}" style="display:${c===activeCCY?'':'none'}">
+      <div class="flex-between mb-2">
+        <div style="display:flex;gap:0.75rem;align-items:center">
+          <span style="font-size:0.72rem;color:var(--text-muted)">
+            Toplam Giriş: <strong style="color:var(--green)">${cd.total_inflow.toFixed(1)}</strong> &nbsp;|&nbsp;
+            Toplam Çıkış: <strong style="color:var(--red)">${cd.total_outflow.toFixed(1)}</strong> &nbsp;|&nbsp;
+            Net: <strong style="color:${cd.net_position>=0?cColors[c]:'var(--red)'}">${cd.net_position>=0?'+':''}${cd.net_position.toFixed(1)}</strong>
+          </span>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center">
+          <span style="font-size:0.68rem;color:var(--text-muted)">Survival:</span>
+          <span class="survival-badge ${survivalCls(cd.survival_horizon)}">${cd.survival_horizon}</span>
+          <span style="font-size:0.65rem;color:var(--text-muted)">Stres:</span>
+          <span class="survival-badge ${survivalCls(cd.stress_survival)}">${cd.stress_survival}</span>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="ladder-table">
+          <thead><tr>
+            <th>Bucket</th><th class="r">Giriş</th><th class="r">Çıkış</th>
+            <th class="r">Swap↓</th><th class="r">Swap↑</th>
+            <th class="r">Gap</th><th class="r">Kümülatif</th><th class="r">Stres Küm.</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div class="chart-box mt-2" id="chartLadder${c}" style="height:200px"></div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('ladderResults').innerHTML = `
+    <div class="kpi-strip">${kpiHTML}
+      <div class="stat-box">
+        <div class="stat-label">TL Karşılığı Net</div>
+        <div class="stat-value ${d.total_net_tl>=0?'positive':'negative'}">${d.total_net_tl>=0?'+':''}${d.total_net_tl.toFixed(0)}M</div>
+        <div class="stat-sub">Tüm CCY'lar</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Swap Rollover Riski</div>
+        <div class="stat-value ${d.swap_rollover_risk>200?'negative':'positive'}">${d.swap_rollover_risk.toFixed(0)}</div>
+        <div class="stat-sub">Yenilenemeyen</div>
+      </div>
+    </div>
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.75rem">
+        <div class="card-title" style="margin:0">Likidite Vade Merdiveni</div>
+        <div class="ccy-tabs" id="ccyTabsEl">${tabHTML}</div>
+      </div>
+      ${ladderTables}
+    </div>`;
+
+  // Render charts for each CCY
+  ccys.forEach(c => {
+    const cd = d.ccys[c];
+    if (!cd) return;
+    const buckets = cd.ladder.map(r => r.bucket);
+    Plotly.newPlot(`chartLadder${c}`, [
+      { type:'bar', name:'Giriş', x:buckets, y:cd.ladder.map(r=>r.inflow),  marker:{color:'rgba(16,185,129,0.7)'} },
+      { type:'bar', name:'Çıkış', x:buckets, y:cd.ladder.map(r=>-r.outflow),marker:{color:'rgba(239,68,68,0.7)'} },
+      { type:'scatter', name:'Kümülatif Gap', x:buckets, y:cd.ladder.map(r=>r.cumulative_gap),
+        mode:'lines+markers', yaxis:'y2', line:{color:{TL:'#f59e0b',USD:'#10b981',EUR:'#2563eb'}[c],width:2.5} },
+      { type:'scatter', name:'Stres Gap', x:buckets, y:cd.ladder.map(r=>r.stress_cum),
+        mode:'lines', yaxis:'y2', line:{color:'#ef4444',width:1.5,dash:'dot'} },
+    ], {
+      barmode:'relative',
+      paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+      margin:{t:5,b:35,l:55,r:50},
+      font:{family:'DM Mono',size:9,color:'#64748b'},
+      xaxis:{gridcolor:'#1e2233'},
+      yaxis:{title:{text:'Tutar',font:{size:9}},gridcolor:'#1e2233'},
+      yaxis2:{overlaying:'y',side:'right',title:{text:'Kümülatif',font:{size:9}},showgrid:false},
+      legend:{font:{size:8},bgcolor:'transparent',orientation:'h',y:-0.2},
+    },{displayModeBar:false,responsive:true});
+  });
+}
+
+function switchCCY(ccy) {
+  activeCCY = ccy;
+  ['TL','USD','EUR'].forEach(c => {
+    const panel = document.getElementById('panel-'+c);
+    if (panel) panel.style.display = c===ccy ? '' : 'none';
+  });
+  document.querySelectorAll('.ccy-btn').forEach((btn,i) => {
+    btn.classList.toggle('active', ['TL','USD','EUR'][i]===ccy);
+  });
+}
+</script>
+{% endblock %}

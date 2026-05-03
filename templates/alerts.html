@@ -1,0 +1,371 @@
+{% extends 'base.html' %}
+{% block title %}Alert System — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all 0.15s; background:none; border-top:none; border-left:none; border-right:none; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+
+.alert-card { border-radius:var(--radius); padding:0.85rem 1rem; margin-bottom:0.6rem; border-left:3px solid; display:grid; grid-template-columns:1fr auto; gap:0.5rem; align-items:start; }
+.alert-critical { background:rgba(239,68,68,.08);  border-color:#ef4444; }
+.alert-warning  { background:rgba(245,158,11,.08); border-color:#f59e0b; }
+.alert-info     { background:rgba(37,99,235,.08);  border-color:#2563eb; }
+.alert-title    { font-size:0.78rem; font-weight:600; margin-bottom:0.2rem; }
+.alert-desc     { font-size:0.68rem; color:var(--text-dim); margin-bottom:0.2rem; }
+.alert-rec      { font-size:0.65rem; color:var(--text-muted); font-style:italic; }
+.alert-meta     { text-align:right; font-size:0.65rem; color:var(--text-muted); }
+.alert-val      { font-family:var(--font-mono); font-size:0.82rem; font-weight:600; }
+.alert-limit    { font-size:0.6rem; }
+.severity-dot   { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:5px; }
+
+.metric-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(180px,1fr)); gap:0.6rem; margin-bottom:1.25rem; }
+.metric-input-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem; }
+.metric-input-label { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:0.25rem; }
+.threshold-row { display:grid; grid-template-columns:1fr 1fr 80px; gap:0.5rem; align-items:center; padding:0.45rem 0; border-bottom:1px solid var(--border-soft); font-size:0.72rem; }
+.threshold-label { color:var(--text-dim); }
+.all-clear { text-align:center; padding:2.5rem; }
+.all-clear-icon { font-size:2.5rem; margin-bottom:0.75rem; }
+.history-row { display:grid; grid-template-columns:80px 160px 1fr auto; gap:0.5rem; padding:0.4rem 0; border-bottom:1px solid var(--border-soft); font-size:0.68rem; align-items:center; }
+.history-row .ack { color:var(--text-muted); text-decoration:line-through; opacity:0.5; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Alert System</h1>
+      <p>ALM threshold monitoring — LCR, NSFR, NII shock, duration gap, EVE/IRRBB, FX NOP, rate delta</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <div id="statusDot" style="width:10px;height:10px;border-radius:50%;background:var(--text-muted)"></div>
+      <span id="statusText" style="font-size:0.72rem;color:var(--text-muted)">Not evaluated</span>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-check"   onclick="switchTab('check')">ALM Kontrol</button>
+  <button class="tab-btn"       id="tab-history"  onclick="switchTab('history')">Alert Tarihçesi</button>
+  <button class="tab-btn"       id="tab-thresholds" onclick="switchTab('thresholds')">Eşik Konfigürasyonu</button>
+</div>
+
+<!-- ══ TAB 1: ALM KONTROL ══ -->
+<div id="panel-check">
+  <div class="card mb-2">
+    <div class="card-title">Metrik Girişi</div>
+    <div class="metric-grid">
+      <div class="metric-input-box"><div class="metric-input-label">LCR (%)</div><input class="form-input" id="m-lcr" type="number" step="0.1" placeholder="e.g. 125"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">NSFR (%)</div><input class="form-input" id="m-nsfr" type="number" step="0.1" placeholder="e.g. 115"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">NII Base (M)</div><input class="form-input" id="m-nii-base" type="number" placeholder="e.g. 620"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">NII Worst ΔNII (M)</div><input class="form-input" id="m-nii-delta" type="number" placeholder="e.g. -14"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">Duration Gap (Y)</div><input class="form-input" id="m-dur" type="number" step="0.01" placeholder="e.g. -0.7"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">ΔEVE Worst (M)</div><input class="form-input" id="m-eve" type="number" placeholder="e.g. -180"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">Tier 1 Capital (M)</div><input class="form-input" id="m-tier1" type="number" placeholder="e.g. 1500"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">FX NOP (M TL)</div><input class="form-input" id="m-fx-nop" type="number" placeholder="e.g. 200"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">Capital (M TL)</div><input class="form-input" id="m-capital" type="number" placeholder="e.g. 1800"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">10Y 5d Delta (%)</div><input class="form-input" id="m-rd10" type="number" step="0.001" placeholder="e.g. 0.15"/></div>
+      <div class="metric-input-box"><div class="metric-input-label">2Y 5d Delta (%)</div><input class="form-input" id="m-rd2" type="number" step="0.001" placeholder="e.g. 0.12"/></div>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-primary" onclick="runCheck()">▶ Evaluate Alerts</button>
+      <button class="btn btn-ghost"   onclick="loadSample()">Load Sample Metrics</button>
+      <button class="btn btn-ghost"   onclick="clearAll()">Clear</button>
+    </div>
+  </div>
+
+  <div id="checkResults">
+    <div class="coming-soon"><div class="coming-soon-icon">🔔</div><h2>Alert System</h2>
+    <p>Enter ALM metrics above and evaluate. Alerts will be ranked by severity.</p></div>
+  </div>
+</div>
+
+<!-- ══ TAB 2: HISTORY ══ -->
+<div id="panel-history" style="display:none">
+  <div class="flex-between mb-2">
+    <div class="card-title" style="margin:0">Alert Log</div>
+    <button class="btn btn-ghost" onclick="loadHistory()">⟳ Refresh</button>
+  </div>
+  <div id="historyPanel">
+    <div class="coming-soon"><div class="coming-soon-icon">📋</div><p>Click Refresh to load alert history.</p></div>
+  </div>
+</div>
+
+<!-- ══ TAB 3: THRESHOLDS ══ -->
+<div id="panel-thresholds" style="display:none">
+  <div class="card">
+    <div class="card-title">Eşik Değerleri</div>
+    <div id="thresholdRows"><div class="loading"><div class="spinner"></div> Loading...</div></div>
+    <div style="margin-top:1rem;display:flex;gap:0.5rem">
+      <button class="btn btn-primary" onclick="saveThresholds()">💾 Kaydet</button>
+      <button class="btn btn-ghost"   onclick="resetThresholds()">Reset to Defaults</button>
+    </div>
+  </div>
+  <div class="card mt-2">
+    <div class="card-title">Email Bildirimi (SMTP)</div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem">
+      <div class="form-group"><label class="form-label">SMTP Host</label><input class="form-input" id="smtp-host" placeholder="smtp.gmail.com"/></div>
+      <div class="form-group"><label class="form-label">Port</label><input class="form-input" id="smtp-port" value="587"/></div>
+      <div class="form-group"><label class="form-label">Username</label><input class="form-input" id="smtp-user" placeholder="you@gmail.com"/></div>
+      <div class="form-group"><label class="form-label">Password</label><input class="form-input" id="smtp-pass" type="password"/></div>
+      <div class="form-group"><label class="form-label">From Address</label><input class="form-input" id="smtp-from" placeholder="alm@bank.com"/></div>
+      <div class="form-group"><label class="form-label">To Addresses (comma)</label><input class="form-input" id="smtp-to" placeholder="cfo@bank.com,treasurer@bank.com"/></div>
+    </div>
+    <button class="btn btn-primary mt-1" onclick="testEmail()">📧 Test Email (last alerts)</button>
+    <div id="emailStatus" style="font-size:0.7rem;margin-top:0.5rem"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let lastAlerts = [];
+let thresholdData = {};
+
+function switchTab(tab) {
+  ['check','history','thresholds'].forEach(t => {
+    document.getElementById('panel-'+t).style.display    = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+  if (tab === 'history')    loadHistory();
+  if (tab === 'thresholds') loadThresholds();
+}
+
+function loadSample() {
+  document.getElementById('m-lcr').value       = '118';
+  document.getElementById('m-nsfr').value      = '112';
+  document.getElementById('m-nii-base').value  = '620';
+  document.getElementById('m-nii-delta').value = '-14';
+  document.getElementById('m-dur').value       = '-0.7';
+  document.getElementById('m-eve').value       = '-185';
+  document.getElementById('m-tier1').value     = '1500';
+  document.getElementById('m-fx-nop').value    = '350';
+  document.getElementById('m-capital').value   = '1800';
+  document.getElementById('m-rd10').value      = '0.18';
+  document.getElementById('m-rd2').value       = '0.22';
+}
+
+function clearAll() {
+  ['m-lcr','m-nsfr','m-nii-base','m-nii-delta','m-dur','m-eve',
+   'm-tier1','m-fx-nop','m-capital','m-rd10','m-rd2'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+}
+
+function g(id) {
+  const v = document.getElementById(id).value;
+  return v === '' ? null : parseFloat(v);
+}
+
+async function runCheck() {
+  document.getElementById('checkResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Evaluating ALM metrics...</div>';
+  const metrics = {
+    lcr:             g('m-lcr'),
+    nsfr:            g('m-nsfr'),
+    nii_base:        g('m-nii-base'),
+    nii_worst_delta: g('m-nii-delta'),
+    duration_gap:    g('m-dur'),
+    eve_delta_worst: g('m-eve'),
+    tier1_capital:   g('m-tier1'),
+    fx_nop_tl:       g('m-fx-nop'),
+    capital_tl:      g('m-capital'),
+    rate_delta_10y:  g('m-rd10'),
+    rate_delta_2y:   g('m-rd2'),
+  };
+  // Remove nulls
+  Object.keys(metrics).forEach(k => { if (metrics[k] === null) delete metrics[k]; });
+
+  try {
+    const resp = await fetch('/api/alerts/check', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({metrics})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    lastAlerts = d.alerts || [];
+    renderAlerts(d);
+  } catch(err) {
+    document.getElementById('checkResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderAlerts(d) {
+  const dot  = document.getElementById('statusDot');
+  const txt  = document.getElementById('statusText');
+  if (d.all_clear) {
+    dot.style.background = '#10b981';
+    txt.textContent = 'All Clear';
+    txt.style.color = '#10b981';
+  } else if (d.n_critical > 0) {
+    dot.style.background = '#ef4444';
+    txt.textContent = `${d.n_critical} Critical, ${d.n_warning} Warning`;
+    txt.style.color = '#ef4444';
+  } else {
+    dot.style.background = '#f59e0b';
+    txt.textContent = `${d.n_warning} Warning, ${d.n_info} Info`;
+    txt.style.color = '#f59e0b';
+  }
+
+  if (d.all_clear) {
+    document.getElementById('checkResults').innerHTML = `
+      <div class="all-clear">
+        <div class="all-clear-icon">✅</div>
+        <h2 style="color:var(--green)">All Clear</h2>
+        <p style="color:var(--text-muted)">All ALM metrics are within defined thresholds.</p>
+        <p style="font-size:0.68rem;color:var(--text-muted);margin-top:0.5rem">Evaluated at ${new Date(d.evaluated_at).toLocaleString()}</p>
+      </div>`;
+    return;
+  }
+
+  const sevMap = {critical:'#ef4444', warning:'#f59e0b', info:'#2563eb'};
+  const cards  = d.alerts.map(a => {
+    const cls = `alert-${a.severity}`;
+    const dot = `<span class="severity-dot" style="background:${sevMap[a.severity]}"></span>`;
+    return `<div class="alert-card ${cls}">
+      <div>
+        <div class="alert-title">${dot}${a.title}</div>
+        <div class="alert-desc">${a.description}</div>
+        <div class="alert-rec">→ ${a.recommendation}</div>
+      </div>
+      <div class="alert-meta">
+        <div class="alert-val" style="color:${sevMap[a.severity]}">${a.value !== null ? a.value : '—'}${a.unit||''}</div>
+        <div class="alert-limit">Limit: ${a.threshold}${a.unit||''}</div>
+        <div style="margin-top:0.4rem;font-size:0.6rem">${a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : ''}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('checkResults').innerHTML = `
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">Critical</div><div class="stat-value negative">${d.n_critical}</div></div>
+      <div class="stat-box"><div class="stat-label">Warning</div><div class="stat-value" style="color:var(--gold)">${d.n_warning}</div></div>
+      <div class="stat-box"><div class="stat-label">Info</div><div class="stat-value accent">${d.n_info}</div></div>
+      <div class="stat-box"><div class="stat-label">Evaluated</div><div class="stat-value" style="font-size:0.72rem">${new Date(d.evaluated_at).toLocaleTimeString()}</div></div>
+    </div>
+    ${cards}`;
+}
+
+async function loadHistory() {
+  document.getElementById('historyPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Loading history...</div>';
+  try {
+    const resp = await fetch('/api/alerts/history');
+    const d    = await resp.json();
+    if (!d.length) {
+      document.getElementById('historyPanel').innerHTML =
+        '<div class="coming-soon"><p>No alert history yet. Run evaluations first.</p></div>';
+      return;
+    }
+    const sevMap = {critical:'#ef4444', warning:'#f59e0b', info:'#2563eb'};
+    const rows = [...d].reverse().slice(0,100).map(a => {
+      const cls = a.acknowledged ? 'ack' : '';
+      return `<div class="history-row ${cls}">
+        <span style="color:${sevMap[a.severity]};font-weight:600;font-size:0.65rem">${a.severity.toUpperCase()}</span>
+        <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--text-muted)">${a.timestamp ? new Date(a.timestamp).toLocaleString() : ''}</span>
+        <span>${a.title} — <span style="color:var(--text-muted)">${a.description?.substring(0,80)}...</span></span>
+        <button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 6px" onclick="ackAlert('${a.id}')">✓ ACK</button>
+      </div>`;
+    }).join('');
+    document.getElementById('historyPanel').innerHTML = `
+      <div class="card"><div style="max-height:500px;overflow-y:auto">${rows}</div></div>`;
+  } catch(err) {
+    document.getElementById('historyPanel').innerHTML =
+      `<div class="coming-soon"><p>${err.message}</p></div>`;
+  }
+}
+
+async function ackAlert(alertId) {
+  await fetch('/api/alerts/acknowledge', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({alert_id: alertId})
+  });
+  loadHistory();
+}
+
+async function loadThresholds() {
+  try {
+    const resp = await fetch('/api/alerts/thresholds');
+    thresholdData = await resp.json();
+    renderThresholds(thresholdData);
+  } catch(err) {
+    document.getElementById('thresholdRows').innerHTML = `<span style="color:var(--red)">${err.message}</span>`;
+  }
+}
+
+function renderThresholds(t) {
+  const defs = [
+    {key:'lcr_min',                label:'LCR — Internal Buffer (%)',          unit:'%'},
+    {key:'nsfr_min',               label:'NSFR — Internal Buffer (%)',          unit:'%'},
+    {key:'nii_shock_max_pct',      label:'NII Shock Max (% of base NII)',       unit:'%'},
+    {key:'duration_gap_max',       label:'Duration Gap Max',                    unit:'years'},
+    {key:'eve_shock_max_pct_tier1',label:'EVE Shock Max (% of Tier 1)',         unit:'%'},
+    {key:'fx_nop_max_pct_capital', label:'FX NOP Max (% of capital)',           unit:'%'},
+    {key:'rate_delta_alert_bps',   label:'Rate Delta Alert (5-day, bps)',       unit:'bps'},
+  ];
+  const rows = defs.map(d => `
+    <div class="threshold-row">
+      <span class="threshold-label">${d.label}</span>
+      <input class="form-input" id="thr-${d.key}" type="number" step="0.1" value="${t[d.key] ?? ''}" style="font-size:0.72rem"/>
+      <span style="font-size:0.68rem;color:var(--text-muted)">${d.unit}</span>
+    </div>`).join('');
+  document.getElementById('thresholdRows').innerHTML = rows;
+}
+
+async function saveThresholds() {
+  const defs = ['lcr_min','nsfr_min','nii_shock_max_pct','duration_gap_max',
+                'eve_shock_max_pct_tier1','fx_nop_max_pct_capital','rate_delta_alert_bps'];
+  const payload = {};
+  defs.forEach(k => {
+    const el = document.getElementById('thr-'+k);
+    if (el && el.value !== '') payload[k] = parseFloat(el.value);
+  });
+  try {
+    await fetch('/api/alerts/thresholds', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    showToast('Thresholds saved ✓');
+  } catch(err) { showToast(err.message, true); }
+}
+
+async function resetThresholds() {
+  await fetch('/api/alerts/thresholds', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({})
+  });
+  loadThresholds();
+}
+
+async function testEmail() {
+  document.getElementById('emailStatus').textContent = 'Sending...';
+  const smtp = {
+    host:     document.getElementById('smtp-host').value,
+    port:     parseInt(document.getElementById('smtp-port').value || '587'),
+    user:     document.getElementById('smtp-user').value,
+    password: document.getElementById('smtp-pass').value,
+    from_addr:document.getElementById('smtp-from').value,
+    to_addrs: document.getElementById('smtp-to').value.split(',').map(s=>s.trim()).filter(Boolean),
+  };
+  try {
+    const resp = await fetch('/api/alerts/send-email', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({smtp_config: smtp, alerts: lastAlerts})
+    });
+    const d = await resp.json();
+    document.getElementById('emailStatus').textContent =
+      d.sent ? `✅ Email sent to ${d.recipients?.join(', ')}` : `❌ ${d.error || d.reason}`;
+  } catch(err) {
+    document.getElementById('emailStatus').textContent = `❌ ${err.message}`;
+  }
+}
+
+function showToast(msg, isErr=false) {
+  const t = document.createElement('div');
+  t.style.cssText = `position:fixed;bottom:20px;right:20px;background:${isErr?'#ef4444':'#10b981'};color:#fff;padding:0.6rem 1.2rem;border-radius:6px;font-size:0.72rem;z-index:9999;font-family:var(--font-mono)`;
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+</script>
+{% endblock %}

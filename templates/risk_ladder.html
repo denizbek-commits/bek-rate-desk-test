@@ -1,0 +1,377 @@
+{% extends "base.html" %}
+
+{% block title %}DV01 Risk Merdiveni — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ladder-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .hedge-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+  }
+
+  .hedge-card .action {
+    font-weight: 600;
+    color: var(--gold);
+    font-size: 0.85rem;
+  }
+
+  .hedge-card .rationale {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 0.3rem;
+  }
+
+  .position-table {
+    width: 100%;
+    font-size: 0.8rem;
+  }
+
+  .position-table td {
+    padding: 0.4rem 0.5rem;
+  }
+
+  .position-table tr.asset-row {
+    border-left: 3px solid var(--green-dim);
+    background: rgba(16, 185, 129, 0.05);
+  }
+
+  .position-table tr.liability-row {
+    border-left: 3px solid var(--red-dim);
+    background: rgba(239, 68, 68, 0.05);
+  }
+
+  .kpi-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    text-align: center;
+  }
+
+  .kpi-box .kpi-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .kpi-box .kpi-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .ladder-row {
+    padding: 0.6rem;
+    border-left: 3px solid transparent;
+    border-radius: 2px;
+    margin-bottom: 0.3rem;
+  }
+
+  .ladder-row.positive {
+    border-left-color: var(--gold);
+    background: var(--gold-dim);
+  }
+
+  .ladder-row.negative {
+    border-left-color: var(--accent);
+    background: var(--accent-glow);
+  }
+
+  .loading-center {
+    text-align: center;
+    padding: 2rem;
+    color: var(--text-muted);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📐 DV01 Risk Merdiveni</h1>
+  <p>Vade sepeti bazında net DV01 dağılımı · Hedge önerileri · Pozisyon detayı</p>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; gap: 1rem;">
+  <div style="display: flex; gap: 0.75rem;">
+    <button class="btn btn-ghost" onclick="loadPortfolio()">📥 Portföyü Yükle</button>
+    <button class="btn btn-primary" onclick="runLadder()">▶ Hesapla</button>
+  </div>
+  <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; cursor: pointer;">
+    <input type="checkbox" id="autoRefresh" onchange="toggleAutoRefresh()"/>
+    Auto-refresh (60s)
+  </label>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="kpi-box">
+    <div class="kpi-label">Net DV01</div>
+    <div class="kpi-value" id="kpiNetDV01">—</div>
+    <div style="font-size: 0.65rem; color: var(--text-muted); margin-top: 0.2rem;">M TL/bps</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Pozisyon Sayısı</div>
+    <div class="kpi-value" id="kpiPosCount">—</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Yön</div>
+    <div class="kpi-value" id="kpiDirection" style="font-size: 1rem;">—</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Son Güncelleme</div>
+    <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.2rem;" id="kpiLastUpdate">—</div>
+  </div>
+</div>
+
+<div class="ladder-grid">
+  <div class="card">
+    <div class="card-header">Vade Sepeti DV01 Dağılımı</div>
+    <div id="chartLadder" style="height: 320px;"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Hedge Önerileri</div>
+    <div id="hedgeSuggestions" style="max-height: 320px; overflow-y: auto;">
+      <div style="color: var(--text-muted); font-size: 0.8rem; padding: 1rem;">Hesapla butonuna basarak başlayın</div>
+    </div>
+  </div>
+</div>
+
+<div class="card" style="margin-bottom: 1.5rem;">
+  <div class="card-header">Sepet Özeti</div>
+  <div style="overflow-x: auto;">
+    <table id="ladderTable" class="position-table">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border);">
+          <th style="text-align: left; padding: 0.6rem;">Sepet</th>
+          <th style="text-align: right; padding: 0.6rem;">Varlık DV01 (M)</th>
+          <th style="text-align: right; padding: 0.6rem;">Yük. DV01 (M)</th>
+          <th style="text-align: right; padding: 0.6rem;">Net DV01 (M)</th>
+          <th style="text-align: center; padding: 0.6rem;">Pozisyon</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5" style="text-align: center; padding: 1rem; color: var(--text-muted);">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Pozisyon Detayı</div>
+  <div style="overflow-x: auto;">
+    <table id="positionTable" class="position-table">
+      <thead>
+        <tr style="border-bottom: 1px solid var(--border);">
+          <th style="text-align: left; padding: 0.6rem;">Ad</th>
+          <th style="text-align: center; padding: 0.6rem;">Para Br.</th>
+          <th style="text-align: center; padding: 0.6rem;">Taraf</th>
+          <th style="text-align: right; padding: 0.6rem;">Nominal (M)</th>
+          <th style="text-align: right; padding: 0.6rem;">Kupon%</th>
+          <th style="text-align: right; padding: 0.6rem;">Vade (Y)</th>
+          <th style="text-align: right; padding: 0.6rem;">Fiyat</th>
+          <th style="text-align: right; padding: 0.6rem;">YTM%</th>
+          <th style="text-align: right; padding: 0.6rem;">ModD</th>
+          <th style="text-align: right; padding: 0.6rem;">Port. DV01 (M)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="10" style="text-align: center; padding: 1rem; color: var(--text-muted);">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div id="loadingState" class="loading-center" style="display: none;">
+  <div style="margin-bottom: 0.5rem;">⏳ Hesaplanıyor...</div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+let autoRefreshInterval = null;
+window.portfolioData = [];
+
+function toggleAutoRefresh() {
+  if (document.getElementById('autoRefresh').checked) {
+    autoRefreshInterval = setInterval(() => {
+      runLadder();
+    }, 60000);
+  } else if (autoRefreshInterval) {
+    clearInterval(autoRefreshInterval);
+    autoRefreshInterval = null;
+  }
+}
+
+function loadPortfolio() {
+  fetch('/api/dealer/portfolio')
+    .then(r => r.json())
+    .then(data => {
+      window.portfolioData = data;
+      console.log('Portfolio loaded:', data);
+    })
+    .catch(e => console.error('Load portfolio error:', e));
+}
+
+function runLadder() {
+  document.getElementById('loadingState').style.display = 'block';
+
+  fetch('/api/risk-ladder/data', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ positions: window.portfolioData }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      renderResults(data);
+      document.getElementById('loadingState').style.display = 'none';
+    })
+    .catch(e => {
+      console.error('Error:', e);
+      document.getElementById('loadingState').style.display = 'none';
+    });
+}
+
+function renderResults(data) {
+  const totalNetDV01 = data.total_net_dv01 || 0;
+  const posCount = data.position_count || 0;
+  const asOf = new Date(data.as_of).toLocaleTimeString('tr-TR');
+
+  document.getElementById('kpiNetDV01').textContent = totalNetDV01.toFixed(2);
+  document.getElementById('kpiPosCount').textContent = posCount;
+  document.getElementById('kpiDirection').textContent = totalNetDV01 > 0 ? '📈 Yük.' : '📉 Var.';
+  document.getElementById('kpiLastUpdate').textContent = asOf;
+
+  renderChart(data.ladder);
+  renderLadderTable(data.ladder);
+  renderHedgeSuggestions(data.hedge_suggestions);
+  renderPositionTable(data.positions);
+}
+
+function renderChart(ladder) {
+  const buckets = ladder.map(x => x.bucket);
+  const assetDV01 = ladder.map(x => x.dv01_asset);
+  const liabilityDV01 = ladder.map(x => x.dv01_liability);
+  const netDV01 = ladder.map(x => x.net_dv01);
+
+  const trace1 = {
+    x: assetDV01,
+    y: buckets,
+    name: 'Varlık DV01',
+    type: 'bar',
+    orientation: 'h',
+    marker: { color: 'var(--green)' },
+  };
+
+  const trace2 = {
+    x: liabilityDV01.map(x => -x),
+    y: buckets,
+    name: 'Yük. DV01',
+    type: 'bar',
+    orientation: 'h',
+    marker: { color: 'var(--red)' },
+  };
+
+  const trace3 = {
+    x: netDV01,
+    y: buckets,
+    name: 'Net DV01',
+    type: 'scatter',
+    mode: 'lines+markers',
+    yaxis: 'y',
+    xaxis: 'x2',
+    line: { color: 'var(--gold)', width: 2 },
+    marker: { size: 8 },
+  };
+
+  const layout = {
+    barmode: 'relative',
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e2e8f0', family: 'DM Mono' },
+    margin: { l: 80, r: 60, t: 20, b: 40 },
+    hovermode: 'y unified',
+    xaxis: { title: 'DV01 (M TL/bps)', gridcolor: 'rgba(30,34,51,0.5)' },
+    xaxis2: { title: 'Net DV01', overlaying: 'x', side: 'top' },
+    yaxis: { title: 'Vade Sepeti' },
+  };
+
+  Plotly.newPlot('chartLadder', [trace1, trace2, trace3], layout, { responsive: true, staticPlot: false });
+}
+
+function renderLadderTable(ladder) {
+  const tbody = document.querySelector('#ladderTable tbody');
+  tbody.innerHTML = '';
+
+  ladder.forEach(row => {
+    const tr = document.createElement('tr');
+    const cls = row.net_dv01 > 0 ? 'liability-row' : (row.net_dv01 < 0 ? 'asset-row' : '');
+    tr.className = cls;
+    tr.innerHTML = `
+      <td style="padding: 0.6rem;">${row.bucket}</td>
+      <td style="text-align: right; padding: 0.6rem; color: var(--green);">${row.dv01_asset.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem; color: var(--red);">${row.dv01_liability.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem; color: var(--gold); font-weight: 600;">${row.net_dv01.toFixed(2)}</td>
+      <td style="text-align: center; padding: 0.6rem;">${row.count}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderHedgeSuggestions(suggestions) {
+  const div = document.getElementById('hedgeSuggestions');
+  if (!suggestions || suggestions.length === 0) {
+    div.innerHTML = '<div style="color: var(--text-muted); font-size: 0.8rem; padding: 1rem;">Hedge gerekli değil</div>';
+    return;
+  }
+
+  div.innerHTML = suggestions.map(s => `
+    <div class="hedge-card">
+      <div class="action">${s.action}</div>
+      <div class="rationale">${s.rationale_tr}</div>
+      <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.4rem;">
+        Net DV01: <strong>${s.net_dv01.toFixed(2)} M</strong> · ${s.urgency === 'high' ? '🔴 Yüksek Aciliyet' : '🟡 Orta'}
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderPositionTable(positions) {
+  const tbody = document.querySelector('#positionTable tbody');
+  tbody.innerHTML = '';
+
+  positions.forEach(pos => {
+    const tr = document.createElement('tr');
+    tr.className = pos.side === 'asset' ? 'asset-row' : 'liability-row';
+    tr.innerHTML = `
+      <td style="padding: 0.6rem;">${pos.name}</td>
+      <td style="text-align: center; padding: 0.6rem;">${pos.currency}</td>
+      <td style="text-align: center; padding: 0.6rem; font-weight: 600;">${pos.side === 'asset' ? '📈' : '📉'}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.par_m.toFixed(1)}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.coupon_pct.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.maturity_years.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.market_price_pct.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.ytm_pct.toFixed(2)}</td>
+      <td style="text-align: right; padding: 0.6rem;">${pos.dv01_unit.toFixed(4)}</td>
+      <td style="text-align: right; padding: 0.6rem; color: var(--gold); font-weight: 600;">${pos.dv01_portfolio_m.toFixed(2)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+window.addEventListener('load', () => {
+  loadPortfolio();
+  setTimeout(() => runLadder(), 500);
+});
+</script>
+{% endblock %}

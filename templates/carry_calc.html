@@ -1,0 +1,379 @@
+{% extends "base.html" %}
+
+{% block title %}Carry & Roll-Down Hesaplayıcı — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+  .input-group {
+    margin-bottom: 1rem;
+  }
+
+  .input-group label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .input-group input,
+  .input-group select {
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
+
+  .input-group input:focus,
+  .input-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.2);
+  }
+
+  .kpi-badge {
+    display: inline-block;
+    background: var(--gold-dim);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    padding: 0.35rem 0.6rem;
+    border-radius: var(--radius);
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-top: 0.5rem;
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .kpi-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    text-align: center;
+  }
+
+  .kpi-box .kpi-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .kpi-box .kpi-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .scen-table {
+    width: 100%;
+    font-size: 0.8rem;
+    border-collapse: collapse;
+  }
+
+  .scen-table thead tr {
+    border-bottom: 1px solid var(--border);
+  }
+
+  .scen-table td,
+  .scen-table th {
+    padding: 0.5rem 0.6rem;
+    text-align: right;
+  }
+
+  .scen-table th {
+    text-align: right;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+  }
+
+  .scen-table tbody tr {
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .scen-table tbody tr:nth-child(5) {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  .scen-table tbody tr.positive {
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .scen-table tbody tr.negative {
+    background: rgba(239, 68, 68, 0.08);
+  }
+
+  .curve-badge {
+    display: inline-block;
+    background: var(--accent-glow);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    padding: 0.3rem 0.5rem;
+    border-radius: var(--radius);
+    font-size: 0.7rem;
+    margin-top: 0.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📉 Carry & Roll-Down Hesaplayıcı</h1>
+  <p>Tahvil carry geliri, roll-down etkisi ve getiri senaryoları</p>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">Tahvil Parametreleri</div>
+
+    <div class="input-group">
+      <label>Kupon (%)</label>
+      <input type="number" id="inpCoupon" value="28.5" step="0.1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Vade (Yıl)</label>
+      <input type="number" id="inpMaturity" value="3.2" step="0.1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Piyasa Fiyatı (% par)</label>
+      <input type="number" id="inpPrice" value="99.4" step="0.1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Repo Maliyeti (%)</label>
+      <input type="number" id="inpRepo" value="0" step="0.1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Elde Tutma Süresi (Ay)</label>
+      <select id="inpHoldM">
+        <option value="1">1 Ay</option>
+        <option value="3" selected>3 Ay</option>
+        <option value="6">6 Ay</option>
+        <option value="12">12 Ay</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label>Frekans</label>
+      <select id="inpFreq">
+        <option value="1">Yıllık</option>
+        <option value="2" selected>Yarıyıllık</option>
+        <option value="4">Üç aylık</option>
+      </select>
+    </div>
+
+    <button class="btn btn-ghost" onclick="loadTRCurve()">📈 TR Eğrisi Yükle</button>
+    <div id="curveStatus" class="curve-badge" style="display: none;">TR Eğrisi yüklendi ✓</div>
+
+    <button class="btn btn-primary" onclick="runCarry()" style="margin-top: 1rem; width: 100%;">▶ Hesapla</button>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Sonuçlar</div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+      <div class="kpi-box">
+        <div class="kpi-label">Gross Carry</div>
+        <div class="kpi-value" id="kpiGrossCarry">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Net Carry</div>
+        <div class="kpi-value" id="kpiNetCarry">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Roll-Down</div>
+        <div class="kpi-value" id="kpiRollDown">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">%</div>
+      </div>
+      <div class="kpi-box">
+        <div class="kpi-label">Toplam</div>
+        <div class="kpi-value" id="kpiTotal">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">%</div>
+      </div>
+    </div>
+
+    <div id="breakEvenBadge" style="display: none;" class="kpi-badge">
+      Başa baş: <span id="beText">—</span> bps
+    </div>
+
+    <hr style="border-color: var(--border-soft); margin: 1rem 0;"/>
+
+    <div style="font-weight: 600; font-size: 0.85rem; margin-bottom: 0.75rem;">Getiri Senaryoları</div>
+    <div style="overflow-x: auto;">
+      <table id="scenTable" class="scen-table">
+        <thead>
+          <tr>
+            <th>Şok (bps)</th>
+            <th>Fiyat %</th>
+            <th>Carry %</th>
+            <th>Toplam %</th>
+            <th>Yıllık %</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Senaryo Grafiği</div>
+  <div id="chartCarry" style="height: 280px;"></div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+let window_curveData = {};
+
+function loadTRCurve() {
+  fetch('/api/yield-curve/data')
+    .then(r => r.json())
+    .then(data => {
+      window_curveData = {};
+      if (data.tr_curve && data.tr_curve.curve) {
+        data.tr_curve.curve.forEach(item => {
+          const tenor = item.tenor || '';
+          const yield_pct = item.yield || 0;
+          window_curveData[tenor] = yield_pct;
+        });
+      }
+      document.getElementById('curveStatus').style.display = 'inline-block';
+      console.log('TR Curve loaded:', window_curveData);
+    })
+    .catch(e => console.error('Load TR curve error:', e));
+}
+
+function runCarry() {
+  const coupon = parseFloat(document.getElementById('inpCoupon').value) || 28.5;
+  const maturity = parseFloat(document.getElementById('inpMaturity').value) || 3.0;
+  const price = parseFloat(document.getElementById('inpPrice').value) || 100.0;
+  const repo = parseFloat(document.getElementById('inpRepo').value) || 0;
+  const holdM = parseInt(document.getElementById('inpHoldM').value) || 3;
+  const freq = parseInt(document.getElementById('inpFreq').value) || 2;
+
+  fetch('/api/carry/calculate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      coupon_pct: coupon,
+      maturity_years: maturity,
+      market_price_pct: price,
+      repo_rate_pct: repo,
+      holding_months: holdM,
+      freq: freq,
+      curve: window_curveData,
+    }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      renderCarryResults(data);
+    })
+    .catch(e => console.error('Carry calc error:', e));
+}
+
+function renderCarryResults(data) {
+  document.getElementById('kpiGrossCarry').textContent = (data.gross_carry_pct || 0).toFixed(2);
+  document.getElementById('kpiNetCarry').textContent = (data.net_carry_pct || 0).toFixed(2);
+  document.getElementById('kpiRollDown').textContent = (data.roll_down_pct || 0).toFixed(2);
+  document.getElementById('kpiTotal').textContent = (data.roll_down_total_pct || 0).toFixed(2);
+
+  if (data.break_even_bps !== null) {
+    document.getElementById('breakEvenBadge').style.display = 'inline-block';
+    document.getElementById('beText').textContent = data.break_even_bps.toFixed(1);
+  } else {
+    document.getElementById('breakEvenBadge').style.display = 'none';
+  }
+
+  renderScenTable(data.scenarios);
+  renderCarryChart(data.scenarios);
+}
+
+function renderScenTable(scenarios) {
+  const tbody = document.querySelector('#scenTable tbody');
+  tbody.innerHTML = '';
+
+  const shocks = [-100, -50, -25, 0, 25, 50, 100, 200];
+  let rowIdx = 0;
+  shocks.forEach(shock => {
+    const key = shock >= 0 ? `+${shock}bps` : `${shock}bps`;
+    const scen = scenarios[key];
+    if (!scen) return;
+
+    rowIdx++;
+    const tr = document.createElement('tr');
+    const total = scen.total_return_pct || 0;
+    if (rowIdx === 4) {
+      tr.className = '';
+    } else if (total > 0) {
+      tr.className = 'positive';
+    } else if (total < 0) {
+      tr.className = 'negative';
+    }
+
+    tr.innerHTML = `
+      <td>${shock}</td>
+      <td>${(scen.price_return_pct || 0).toFixed(3)}</td>
+      <td>${(scen.carry_pct || 0).toFixed(3)}</td>
+      <td style="font-weight: 600; color: ${total > 0 ? 'var(--green)' : total < 0 ? 'var(--red)' : 'var(--text)'};">${total.toFixed(3)}</td>
+      <td>${(scen.annualized_pct || 0).toFixed(3)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderCarryChart(scenarios) {
+  const shocks = [-100, -50, -25, 0, 25, 50, 100, 200];
+  const labels = shocks.map(s => s >= 0 ? `+${s}` : `${s}`);
+  const totals = shocks.map(s => {
+    const key = s >= 0 ? `+${s}bps` : `${s}bps`;
+    return scenarios[key]?.total_return_pct || 0;
+  });
+
+  const colors = totals.map(t => t > 0 ? 'var(--green)' : (t < 0 ? 'var(--red)' : 'var(--text-muted)'));
+
+  const trace = {
+    x: labels,
+    y: totals,
+    type: 'bar',
+    marker: { color: colors },
+  };
+
+  const layout = {
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e2e8f0', family: 'DM Mono' },
+    margin: { l: 50, r: 30, t: 20, b: 40 },
+    xaxis: { title: 'Faiz Şoku (bps)' },
+    yaxis: { title: 'Toplam Getiri (%)' },
+    hovermode: 'x unified',
+  };
+
+  Plotly.newPlot('chartCarry', [trace], layout, { responsive: true });
+}
+
+window.addEventListener('load', () => {
+  loadTRCurve();
+});
+</script>
+{% endblock %}

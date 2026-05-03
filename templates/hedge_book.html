@@ -1,0 +1,277 @@
+{% extends 'base.html' %}
+{% block title %}Hedge Book — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.book-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.book-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.book-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.book-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.book-table tr:hover td { background:var(--surface); }
+.dir-recv { background:rgba(16,185,129,.12); color:var(--green); font-size:0.6rem; padding:2px 6px; border-radius:3px; font-weight:600; white-space:nowrap; }
+.dir-pay  { background:rgba(239,68,68,.12);  color:var(--red);   font-size:0.6rem; padding:2px 6px; border-radius:3px; font-weight:600; white-space:nowrap; }
+.add-form { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.add-form .full { grid-column:span 2; }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.38rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Hedge Book</h1>
+      <p>IRS / swap kayıt defteri — MTM, DV01, P&L, residual gap, duration katkısı</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <div class="form-group" style="margin:0;display:flex;align-items:center;gap:0.4rem">
+        <label class="form-label" style="margin:0;white-space:nowrap">MTM Rate (%)</label>
+        <input class="form-input" id="currentRate" type="number" step="0.25" value="42.5" style="width:80px"/>
+      </div>
+      <button class="btn btn-ghost"   onclick="loadSampleBook()">📥 Sample Trades</button>
+      <button class="btn btn-primary" onclick="refreshBook()">⟳ Yenile</button>
+      <button class="btn btn-ghost"   onclick="showAddModal()">+ Yeni İşlem</button>
+    </div>
+  </div>
+</div>
+
+<div id="bookSummary" style="margin-bottom:1rem">
+  <div class="loading" style="padding:1rem"><div class="spinner"></div> Hedge book yükleniyor...</div>
+</div>
+
+<div id="bookTable">
+</div>
+
+<!-- Add Trade Modal -->
+<div id="addModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:560px;max-height:85vh;overflow-y:auto">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0">Yeni Hedge İşlemi</div>
+      <button class="btn btn-ghost" onclick="closeModal()">✕</button>
+    </div>
+    <div class="add-form">
+      <div class="form-group full"><label class="form-label">Açıklama / Amaç</label><input class="form-input" id="tPurpose" placeholder="e.g. Duration gap hedge — 3Y receive-fixed"/></div>
+      <div class="form-group"><label class="form-label">Enstrüman</label>
+        <select class="form-select" id="tInstrument"><option value="IRS">IRS</option><option value="FX Swap">FX Swap</option><option value="CCS">CCS</option><option value="Cap">Cap</option><option value="Floor">Floor</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Yön</label>
+        <select class="form-select" id="tDirection"><option value="receive-fixed">Receive-Fixed</option><option value="pay-fixed">Pay-Fixed</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Notional (M)</label><input class="form-input" id="tNotional" type="number" placeholder="500"/></div>
+      <div class="form-group"><label class="form-label">Tenor (Yıl)</label><input class="form-input" id="tTenor" type="number" step="0.5" placeholder="3"/></div>
+      <div class="form-group"><label class="form-label">Sabit Faiz (%)</label><input class="form-input" id="tFixed" type="number" step="0.01" placeholder="43.50"/></div>
+      <div class="form-group"><label class="form-label">Frekans/Yıl</label>
+        <select class="form-select" id="tFreq"><option value="4" selected>Quarterly</option><option value="2">Semi-annual</option><option value="1">Annual</option></select>
+      </div>
+      <div class="form-group"><label class="form-label">Karşı Taraf</label><input class="form-input" id="tCounterparty" placeholder="e.g. Garanti BBVA"/></div>
+      <div class="form-group"><label class="form-label">İşlem Tarihi</label><input class="form-input" id="tTradeDate" type="date"/></div>
+      <div class="form-group"><label class="form-label">Vade Tarihi</label><input class="form-input" id="tMaturity" type="date"/></div>
+    </div>
+    <div style="display:flex;gap:0.5rem;margin-top:1rem">
+      <button class="btn btn-primary" onclick="addTrade()">💾 Kaydet</button>
+      <button class="btn btn-ghost"   onclick="closeModal()">İptal</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Set default trade date to today
+document.getElementById('tTradeDate').value = new Date().toISOString().slice(0,10);
+
+async function refreshBook() {
+  const rate = parseFloat(document.getElementById('currentRate').value) || 42.5;
+  try {
+    const resp = await fetch(`/api/hedge-book?rate=${rate}`);
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderBook(d);
+  } catch(err) {
+    document.getElementById('bookSummary').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+async function loadSampleBook() {
+  await fetch('/api/hedge-book/load-sample', {method:'POST'});
+  refreshBook();
+}
+
+function renderBook(d) {
+  if (!d.trades?.length) {
+    document.getElementById('bookSummary').innerHTML = `
+      <div class="coming-soon"><div class="coming-soon-icon">📒</div><h2>Hedge Book Boş</h2>
+      <p>Sample Trades yükleyin veya + Yeni İşlem ile ekleyin.</p></div>`;
+    document.getElementById('bookTable').innerHTML = '';
+    return;
+  }
+
+  const mtmColor = d.total_mtm_m >= 0 ? 'var(--green)' : 'var(--red)';
+  const pnlColor = d.total_annual_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+  const durColor = d.duration_contribution_yr >= 0 ? 'var(--accent)' : 'var(--gold)';
+
+  document.getElementById('bookSummary').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">İşlem Sayısı</div><div class="stat-value">${d.n_trades}</div></div>
+      <div class="stat-box"><div class="stat-label">Toplam Notional</div><div class="stat-value">${d.total_notional_m.toFixed(0)}M</div></div>
+      <div class="stat-box"><div class="stat-label">MTM (Mark-to-Market)</div><div class="stat-value" style="color:${mtmColor}">${d.total_mtm_m>=0?'+':''}${d.total_mtm_m.toFixed(2)}M</div><div class="stat-sub">@${d.current_rate}%</div></div>
+      <div class="stat-box"><div class="stat-label">Toplam DV01</div><div class="stat-value">${(d.total_dv01_m*1000).toFixed(1)}K</div><div class="stat-sub">per 1bp</div></div>
+      <div class="stat-box"><div class="stat-label">Yıllık P&L</div><div class="stat-value" style="color:${pnlColor}">${d.total_annual_pnl_m>=0?'+':''}${d.total_annual_pnl_m.toFixed(2)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Duration Katkısı</div><div class="stat-value" style="color:${durColor}">${d.duration_contribution_yr>=0?'+':''}${d.duration_contribution_yr.toFixed(3)}Y</div><div class="stat-sub">hedge book'tan</div></div>
+    </div>`;
+
+  const rows = d.trades.map(t => {
+    const dirCls = t.direction === 'receive-fixed' ? 'dir-recv' : 'dir-pay';
+    const dirLbl = t.direction === 'receive-fixed' ? 'RCV-FXD' : 'PAY-FXD';
+    const mtmCls = t.mtm_m >= 0 ? 'pos' : 'neg';
+    const pnlCls = t.annual_pnl_m >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td style="font-weight:500;color:var(--text)">${t.id}</td>
+      <td><span class="dir-${t.direction==='receive-fixed'?'recv':'pay'}">${dirLbl}</span></td>
+      <td class="r"><strong>${t.notional_m}M</strong></td>
+      <td class="r">${t.fixed_rate}%</td>
+      <td class="r">${t.tenor_years}Y</td>
+      <td class="r">${t.remaining_yr.toFixed(2)}Y</td>
+      <td class="r ${mtmCls}">${t.mtm_m>=0?'+':''}${t.mtm_m.toFixed(2)}M</td>
+      <td class="r">${(t.dv01_m*1000).toFixed(1)}K</td>
+      <td class="r ${pnlCls}">${t.annual_pnl_m>=0?'+':''}${t.annual_pnl_m.toFixed(2)}M</td>
+      <td style="font-size:0.65rem;color:var(--text-muted);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${t.purpose||'—'}</td>
+      <td style="color:var(--text-muted);font-size:0.65rem">${t.counterparty||'—'}</td>
+      <td>
+        <button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 6px;color:var(--red)" onclick="closeTrade('${t.id}')">Kapat</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('bookTable').innerHTML = `
+    <div class="card mb-2">
+      <div class="flex-between mb-1">
+        <div class="card-title" style="margin:0">Trade Blotter — ${d.generated_at}</div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="book-table">
+          <thead><tr>
+            <th>ID</th><th>Yön</th><th class="r">Notional</th>
+            <th class="r">Sabit Faiz</th><th class="r">Tenor</th><th class="r">Kalan</th>
+            <th class="r">MTM</th><th class="r">DV01</th>
+            <th class="r">Yıllık P&L</th><th>Amaç</th><th>Karşı Taraf</th><th></th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">MTM Waterfall</div>
+        <div class="chart-box" id="chartMTM" style="height:200px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Notional × Tenor Dağılımı</div>
+        <div class="chart-box" id="chartTenor" style="height:200px"></div>
+      </div>
+    </div>`;
+
+  renderBookCharts(d);
+}
+
+function renderBookCharts(d) {
+  // MTM waterfall
+  const ids  = d.trades.map(t => t.id);
+  const mtms = d.trades.map(t => t.mtm_m);
+  Plotly.newPlot('chartMTM', [{
+    type:'bar', x:ids, y:mtms,
+    marker:{color: mtms.map(v => v>=0?'rgba(16,185,129,0.7)':'rgba(239,68,68,0.7)')},
+    text: mtms.map(v=>(v>=0?'+':'')+v.toFixed(2)+'M'),
+    textposition:'outside', textfont:{size:8,color:'#94a3b8'},
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:15,b:35,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233'},
+    yaxis:{title:{text:'MTM (M)',font:{size:9}},gridcolor:'#1e2233'},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+
+  // Tenor scatter
+  Plotly.newPlot('chartTenor', [{
+    type:'scatter', x:d.trades.map(t=>t.tenor_years), y:d.trades.map(t=>t.notional_m),
+    mode:'markers+text',
+    text:d.trades.map(t=>t.id),
+    textposition:'top center', textfont:{size:8,color:'#94a3b8'},
+    marker:{
+      size:  d.trades.map(t=>Math.sqrt(t.notional_m)*1.5),
+      color: d.trades.map(t=>t.direction==='receive-fixed'?'rgba(16,185,129,0.7)':'rgba(239,68,68,0.7)'),
+    },
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:40,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{title:{text:'Tenor (yıl)',font:{size:9}},gridcolor:'#1e2233'},
+    yaxis:{title:{text:'Notional (M)',font:{size:9}},gridcolor:'#1e2233'},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+}
+
+function showAddModal() {
+  document.getElementById('addModal').style.display = 'flex';
+}
+
+function closeModal() {
+  document.getElementById('addModal').style.display = 'none';
+}
+
+document.getElementById('addModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+async function addTrade() {
+  const trade = {
+    instrument:    document.getElementById('tInstrument').value,
+    direction:     document.getElementById('tDirection').value,
+    notional_m:    parseFloat(document.getElementById('tNotional').value),
+    tenor_years:   parseFloat(document.getElementById('tTenor').value),
+    fixed_rate:    parseFloat(document.getElementById('tFixed').value),
+    freq:          parseInt(document.getElementById('tFreq').value),
+    counterparty:  document.getElementById('tCounterparty').value,
+    purpose:       document.getElementById('tPurpose').value,
+    trade_date:    document.getElementById('tTradeDate').value,
+    maturity_date: document.getElementById('tMaturity').value,
+    status:        'active',
+  };
+  if (!trade.notional_m || !trade.tenor_years || !trade.fixed_rate) {
+    alert('Notional, Tenor ve Sabit Faiz zorunlu.'); return;
+  }
+  try {
+    const resp = await fetch('/api/hedge-book/trade', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(trade)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    closeModal();
+    refreshBook();
+    showToast(`İşlem kaydedildi — ID: ${d.id}`);
+  } catch(err) { alert(err.message); }
+}
+
+async function closeTrade(id) {
+  if (!confirm(`"${id}" işlemini kapatmak istediğinize emin misiniz?`)) return;
+  await fetch(`/api/hedge-book/trade/${id}`, {method:'DELETE'});
+  refreshBook();
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(),2500);
+}
+
+// Auto-load
+refreshBook();
+</script>
+{% endblock %}

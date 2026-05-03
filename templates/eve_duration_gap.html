@@ -1,0 +1,526 @@
+{% extends 'base.html' %}
+{% block title %}EVE / Duration Gap — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display: grid; grid-template-columns: 360px 1fr; gap: 1rem; align-items: start; }
+.panel-left { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.items-list { display: flex; flex-direction: column; gap: 0.35rem; max-height: 240px; overflow-y: auto; }
+.item-row {
+  display: grid; grid-template-columns: 1fr 60px 46px 48px 52px 22px;
+  align-items: center; gap: 0.3rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.35rem 0.5rem; font-size: 0.68rem;
+}
+.item-name  { color: var(--text); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-num   { color: var(--accent); text-align: right; font-variant-numeric: tabular-nums; }
+.item-sm    { color: var(--text-muted); text-align: right; font-size: 0.62rem; }
+.item-type-badge { font-size: 0.55rem; border-radius: 3px; padding: 1px 4px; text-align: center; }
+.item-type-badge.fixed    { background: var(--accent-glow); color: var(--accent); }
+.item-type-badge.floating { background: var(--green-dim);   color: var(--green); }
+.item-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; transition: color 0.15s; }
+.item-remove:hover { color: var(--red); }
+
+.add-form { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 3; }
+
+.sc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.sc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.8rem 0.9rem; transition: border-color 0.2s;
+}
+.sc-card.breach { border-color: rgba(239,68,68,0.45); background: var(--red-dim); }
+.sc-name   { font-family: var(--font-head); font-size: 0.72rem; font-weight: 600; color: var(--text); margin-bottom: 0.2rem; }
+.sc-shocks { font-size: 0.6rem; color: var(--text-muted); margin-bottom: 0.45rem; }
+.sc-delta  { font-size: 1rem; font-weight: 500; font-family: var(--font-mono); line-height: 1; }
+.sc-delta.pos { color: var(--green); }
+.sc-delta.neg { color: var(--red); }
+.sc-pct    { font-size: 0.62rem; color: var(--text-muted); margin-top: 0.2rem; }
+.sc-brsa   { font-size: 0.58rem; margin-top: 0.4rem; font-weight: 500; }
+.sc-brsa.ok     { color: var(--green); }
+.sc-brsa.breach { color: var(--red); }
+
+.dur-table { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+.dur-table th {
+  text-align: left; padding: 0.35rem 0.6rem;
+  color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase;
+  letter-spacing: 0.07em; border-bottom: 1px solid var(--border); font-weight: 400;
+}
+.dur-table td { padding: 0.4rem 0.6rem; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); }
+.dur-table tr:hover td { background: var(--surface); color: var(--text); }
+.dur-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.dur-table .pos { color: var(--green); }
+.dur-table .neg { color: var(--red); }
+.dur-table .section-row td {
+  background: var(--panel); color: var(--text-muted);
+  font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.08em;
+  padding: 0.25rem 0.6rem; font-weight: 500;
+}
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.dv01-box {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.6rem 0.9rem; font-size: 0.72rem;
+}
+.dv01-label { color: var(--text-muted); flex: 1; }
+.dv01-val   { font-family: var(--font-mono); font-weight: 500; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>EVE / Duration Gap</h1>
+      <p>Economic Value of Equity under IRRBB stress — full DCF repricing per instrument. Basel III / BRSA compliant.</p>
+    </div>
+    <div class="flex-center gap-sm">
+      <span class="badge badge-muted" style="font-size:0.6rem">BRSA Limit ±15% Tier 1</span>
+      <span class="badge badge-blue"  style="font-size:0.6rem">6 IRRBB Scenarios</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ══ LEFT ══ -->
+  <div class="panel-left">
+
+    <!-- Assets -->
+    <div class="card">
+      <div class="card-title">Assets</div>
+      <div style="display:grid;grid-template-columns:1fr 60px 46px 48px 52px 22px;gap:0.3rem;padding:0 0.1rem 0.4rem;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">
+        <span>Name</span><span style="text-align:right">Amt</span><span style="text-align:right">Rate</span><span style="text-align:right">Mat</span><span style="text-align:right">Type</span><span></span>
+      </div>
+      <div class="items-list" id="assetsList"></div>
+      <hr class="sep"/>
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="aName" placeholder="e.g. Fixed Rate Loans"/></div>
+        <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="aAmount" type="number" placeholder="1000"/></div>
+        <div class="form-group"><label class="form-label">Rate (%)</label><input class="form-input" id="aRate" type="number" step="0.01" placeholder="8.50"/></div>
+        <div class="form-group"><label class="form-label">Maturity (yr)</label><input class="form-input" id="aYears" type="number" step="0.5" placeholder="5.0"/></div>
+        <div class="form-group"><label class="form-label">Freq/yr</label>
+          <select class="form-select" id="aFreq">
+            <option value="1">Annual</option><option value="2" selected>Semi</option>
+            <option value="4">Quarterly</option><option value="12">Monthly</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-select" id="aType"><option value="fixed">Fixed</option><option value="floating">Floating</option></select>
+        </div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addItem('asset')">+ Add Asset</button></div>
+      </div>
+    </div>
+
+    <!-- Liabilities -->
+    <div class="card">
+      <div class="card-title">Liabilities</div>
+      <div style="display:grid;grid-template-columns:1fr 60px 46px 48px 52px 22px;gap:0.3rem;padding:0 0.1rem 0.4rem;font-size:0.6rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em">
+        <span>Name</span><span style="text-align:right">Amt</span><span style="text-align:right">Rate</span><span style="text-align:right">Mat</span><span style="text-align:right">Type</span><span></span>
+      </div>
+      <div class="items-list" id="liabsList"></div>
+      <hr class="sep"/>
+      <div class="add-form">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="lName" placeholder="e.g. Time Deposits"/></div>
+        <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="lAmount" type="number" placeholder="800"/></div>
+        <div class="form-group"><label class="form-label">Rate (%)</label><input class="form-input" id="lRate" type="number" step="0.01" placeholder="6.00"/></div>
+        <div class="form-group"><label class="form-label">Maturity (yr)</label><input class="form-input" id="lYears" type="number" step="0.5" placeholder="2.0"/></div>
+        <div class="form-group"><label class="form-label">Freq/yr</label>
+          <select class="form-select" id="lFreq">
+            <option value="1">Annual</option><option value="2" selected>Semi</option>
+            <option value="4">Quarterly</option><option value="12">Monthly</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Type</label>
+          <select class="form-select" id="lType"><option value="fixed">Fixed</option><option value="floating">Floating</option></select>
+        </div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addItem('liability')">+ Add Liability</button></div>
+      </div>
+    </div>
+
+    <!-- Parameters -->
+    <div class="card">
+      <div class="card-title">Parameters</div>
+      <div class="add-form">
+        <div class="form-group">
+          <label class="form-label" title="Flat discount curve rate — use 10Y gov bond yield">Discount Rate (%)</label>
+          <input class="form-input" id="discRate" type="number" step="0.25" value="5.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label" title="BRSA: |ΔEVE| must stay within ±15% of Tier 1">Tier 1 Capital (M)</label>
+          <input class="form-input" id="tier1" type="number" value="500"/>
+        </div>
+      </div>
+      <div style="margin-top:0.5rem;display:flex;flex-direction:column;gap:0.4rem">
+        <button class="btn btn-primary w-full" onclick="runAnalysis()">▶ Run EVE Analysis</button>
+        <button class="btn btn-ghost w-full"   onclick="loadSample()">Load Sample Balance Sheet</button>
+        <button class="btn btn-ghost w-full" style="font-size:0.7rem" onclick="exportEVE()" title="EVE sonuçlarını Excel'e aktar">
+          📥 Export to Excel
+        </button>
+        <div style="display:flex;gap:0.4rem">
+          <button class="btn btn-ghost" style="flex:1;font-size:0.68rem;color:var(--gold)" onclick="loadFromSession()" title="Aktif oturumdan bilanço yükle">
+            📋 Oturumdan Yükle
+          </button>
+          <button class="btn btn-ghost" style="flex:1;font-size:0.68rem" onclick="saveToSession()" title="Bilançoyu aktif oturuma kaydet">
+            💾 Oturuma Kaydet
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ RIGHT ══ -->
+  <div id="resultsPanel">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">⚖️</div>
+      <h2>EVE / Duration Gap</h2>
+      <p>Add assets and liabilities, set your discount rate and Tier 1 capital, then run the analysis — or use Load Sample to see it instantly.</p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let assets      = [];
+let liabilities = [];
+
+function addItem(type) {
+  const p    = type === 'asset' ? 'a' : 'l';
+  const name = document.getElementById(p+'Name').value.trim();
+  const amt  = parseFloat(document.getElementById(p+'Amount').value);
+  const rate = parseFloat(document.getElementById(p+'Rate').value);
+  const yrs  = parseFloat(document.getElementById(p+'Years').value);
+  const freq = parseInt(document.getElementById(p+'Freq').value);
+  const itype= document.getElementById(p+'Type').value;
+  if (!name || isNaN(amt) || isNaN(rate) || isNaN(yrs)) { alert('Fill Name, Amount, Rate, Maturity.'); return; }
+  const item = {name, amount:amt, rate, maturity_years:yrs, coupon_freq:freq, type:itype};
+  if (type==='asset') { assets.push(item); renderList('assetsList',assets,'asset'); }
+  else { liabilities.push(item); renderList('liabsList',liabilities,'liability'); }
+  ['Name','Amount','Rate','Years'].forEach(f => document.getElementById(p+f).value='');
+}
+
+function removeItem(type, idx) {
+  if (type==='asset') { assets.splice(idx,1); renderList('assetsList',assets,'asset'); }
+  else { liabilities.splice(idx,1); renderList('liabsList',liabilities,'liability'); }
+}
+
+function renderList(id, items, type) {
+  const el = document.getElementById(id);
+  if (!items.length) { el.innerHTML='<div class="text-muted" style="font-size:0.7rem;padding:0.4rem">No items added</div>'; return; }
+  el.innerHTML = items.map((item,i) => `
+    <div class="item-row">
+      <span class="item-name" title="${item.name}">${item.name}</span>
+      <span class="item-num">${item.amount.toLocaleString()}</span>
+      <span class="item-sm">${item.rate}%</span>
+      <span class="item-sm">${item.maturity_years}Y</span>
+      <span class="item-type-badge ${item.type}">${item.type==='floating'?'Float':'Fixed'}</span>
+      <button class="item-remove" onclick="removeItem('${type}',${i})">✕</button>
+    </div>`).join('');
+}
+
+function loadSample() {
+  assets = [
+    {name:'Fixed Rate Loans',          amount:2500, rate:44.0, maturity_years:3.0,  coupon_freq:4, type:'fixed'},
+    {name:'Floating Rate Loans',       amount:1800, rate:45.5, maturity_years:5.0,  coupon_freq:4, type:'floating'},
+    {name:'Government Bond Portfolio', amount:1200, rate:38.0, maturity_years:7.0,  coupon_freq:2, type:'fixed'},
+    {name:'Treasury Bills',            amount:600,  rate:35.5, maturity_years:0.5,  coupon_freq:2, type:'fixed'},
+    {name:'Infrastructure Loans',      amount:400,  rate:42.0, maturity_years:10.0, coupon_freq:2, type:'fixed'},
+    {name:'TLREF-linked Corp Loans',   amount:500,  rate:46.0, maturity_years:2.0,  coupon_freq:4, type:'floating'},
+  ];
+  liabilities = [
+    {name:'Demand Deposits',           amount:1500, rate:12.0, maturity_years:0.08, coupon_freq:12,type:'floating'},
+    {name:'Time Deposits 3M',          amount:2000, rate:42.0, maturity_years:0.25, coupon_freq:4, type:'fixed'},
+    {name:'Time Deposits 12M',         amount:1000, rate:40.0, maturity_years:1.0,  coupon_freq:2, type:'fixed'},
+    {name:'Wholesale Funding 2Y',      amount:800,  rate:43.5, maturity_years:2.0,  coupon_freq:2, type:'fixed'},
+    {name:'Subordinated Debt 5Y',      amount:300,  rate:48.0, maturity_years:5.0,  coupon_freq:2, type:'fixed'},
+    {name:'Senior Eurobond 3Y',        amount:400,  rate:8.5,  maturity_years:3.0,  coupon_freq:2, type:'fixed'},
+  ];
+  renderList('assetsList', assets, 'asset');
+  renderList('liabsList',  liabilities, 'liability');
+  document.getElementById('discRate').value = '42.5';
+  document.getElementById('tier1').value    = '1500';
+}
+
+async function runAnalysis() {
+  if (!assets.length && !liabilities.length) { alert('Add items or use Load Sample.'); return; }
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Computing EVE — discounting cashflows per instrument...</div>';
+  try {
+    const resp = await fetch('/api/eve/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        assets, liabilities,
+        discount_rate: parseFloat(document.getElementById('discRate').value),
+        tier1_capital: parseFloat(document.getElementById('tier1').value),
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderResults(d);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><h2>Error</h2><p>${err.message}</p></div>`;
+  }
+}
+
+function renderResults(d) {
+  const brsa_limit_abs = d.brsa_limit_pct / 100 * d.tier1_capital;
+  const hasBreaches    = d.brsa_breaches.length > 0;
+
+  const scCards = Object.entries(d.scenarios).map(([key, sc]) => {
+    const cls  = sc.delta_eve >= 0 ? 'pos' : 'neg';
+    const sign = sc.delta_eve >= 0 ? '+' : '';
+    const shockDesc = sc.short_shock_bps === sc.long_shock_bps
+      ? `${sc.short_shock_bps >= 0 ? '+' : ''}${sc.short_shock_bps}bps uniform`
+      : `Short ${sc.short_shock_bps >= 0 ? '+' : ''}${sc.short_shock_bps}bps / Long ${sc.long_shock_bps >= 0 ? '+' : ''}${sc.long_shock_bps}bps`;
+    return `<div class="sc-card ${sc.brsa_breach?'breach':''}">
+      <div class="sc-name">${sc.label}</div>
+      <div class="sc-shocks">${shockDesc}</div>
+      <div class="sc-delta ${cls}">${sign}${fmt(sc.delta_eve)}M</div>
+      <div class="sc-pct">${sign}${sc.delta_eve_pct_equity.toFixed(1)}% of EVE</div>
+      <div class="sc-brsa ${sc.brsa_breach?'breach':'ok'}">${sc.brsa_breach
+        ? `⚠ BRSA BREACH — ${fmt(sc.delta_eve_pct_tier1)}% Tier 1`
+        : `✓ Within limit — ${fmt(sc.delta_eve_pct_tier1)}% Tier 1`}</div>
+    </div>`;
+  }).join('');
+
+  const aRows = d.asset_details.map(a => `
+    <tr>
+      <td>${a.name}</td>
+      <td class="r">${fmt(a.amount)}M</td>
+      <td class="r">${a.rate.toFixed(2)}%</td>
+      <td class="r">${a.maturity_years.toFixed(1)}Y</td>
+      <td class="r">${fmt(a.pv)}M</td>
+      <td class="r">${a.mac_duration.toFixed(2)}</td>
+      <td class="r">${a.mod_duration.toFixed(2)}</td>
+      <td class="r">${fmt(a.dv01)}M</td>
+    </tr>`).join('');
+
+  const lRows = d.liability_details.map(l => `
+    <tr>
+      <td>${l.name}</td>
+      <td class="r">${fmt(l.amount)}M</td>
+      <td class="r">${l.rate.toFixed(2)}%</td>
+      <td class="r">${l.maturity_years.toFixed(1)}Y</td>
+      <td class="r">${fmt(l.pv)}M</td>
+      <td class="r">${l.mac_duration.toFixed(2)}</td>
+      <td class="r">${l.mod_duration.toFixed(2)}</td>
+      <td class="r">${fmt(l.dv01)}M</td>
+    </tr>`).join('');
+
+  document.getElementById('resultsPanel').innerHTML = `
+
+    <div class="kpi-strip">
+      <div class="stat-box">
+        <div class="stat-label">Base EVE</div>
+        <div class="stat-value ${d.base_eve>=0?'positive':'negative'}">${fmt(d.base_eve)}M</div>
+        <div class="stat-sub">PV(Assets) − PV(Liabilities)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">EVE-at-Risk</div>
+        <div class="stat-value ${d.eve_at_risk>=0?'positive':'negative'}">${fmt(d.eve_at_risk)}M</div>
+        <div class="stat-sub">Worst IRRBB scenario</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Duration Gap</div>
+        <div class="stat-value">${d.duration_gap.toFixed(2)}Y</div>
+        <div class="stat-sub">D_A − D_L × (L/A)</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Net DV01</div>
+        <div class="stat-value">${fmt(d.net_dv01)}M</div>
+        <div class="stat-sub">EVE change per 1bp</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">BRSA Status</div>
+        <div class="stat-value ${hasBreaches?'negative':'positive'}">${hasBreaches?'BREACH':'PASS'}</div>
+        <div class="stat-sub">Limit ±${fmt(brsa_limit_abs)}M</div>
+      </div>
+    </div>
+
+    <div class="flex-center gap-md mb-2" style="flex-wrap:wrap">
+      <div class="dv01-box"><span class="dv01-label">D_Assets</span><span class="dv01-val">${d.d_assets.toFixed(2)}Y</span></div>
+      <div class="dv01-box"><span class="dv01-label">D_Liabilities</span><span class="dv01-val">${d.d_liabilities.toFixed(2)}Y</span></div>
+      <div class="dv01-box"><span class="dv01-label">Duration Gap</span><span class="dv01-val" style="color:var(--gold)">${d.duration_gap.toFixed(2)}Y</span></div>
+      <div class="dv01-box"><span class="dv01-label">Asset DV01</span><span class="dv01-val" style="color:var(--green)">${fmt(d.total_dv01_assets)}M</span></div>
+      <div class="dv01-box"><span class="dv01-label">Liab DV01</span><span class="dv01-val" style="color:var(--red)">${fmt(d.total_dv01_liabs)}M</span></div>
+      <div class="dv01-box"><span class="dv01-label">Net DV01</span><span class="dv01-val" style="color:var(--accent)">${fmt(d.net_dv01)}M</span></div>
+    </div>
+
+    <div class="card mb-2">
+      <div class="card-title">IRRBB Stress Scenarios — Basel III Standard Shocks</div>
+      <div class="sc-grid">${scCards}</div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">ΔEVE by Scenario</div>
+        <div class="chart-box" id="chartEVE" style="height:200px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Duration Profile — Assets vs Liabilities</div>
+        <div class="chart-box" id="chartDur" style="height:200px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Instrument Detail — DCF Valuation & Duration</div>
+      <div style="overflow-x:auto">
+        <table class="dur-table">
+          <thead>
+            <tr>
+              <th>Instrument</th><th class="r">Notional</th><th class="r">Rate</th>
+              <th class="r">Maturity</th><th class="r">PV</th>
+              <th class="r">Mac Dur</th><th class="r">Mod Dur</th><th class="r">DV01</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr class="section-row"><td colspan="8">Assets</td></tr>
+            ${aRows}
+            <tr style="font-weight:500;font-size:0.7rem;color:var(--text)">
+              <td>Total Assets</td>
+              <td class="r">${fmt(assets.reduce((s,a)=>s+a.amount,0))}M</td>
+              <td class="r">—</td><td class="r">—</td>
+              <td class="r">${fmt(d.pv_assets)}M</td>
+              <td class="r">${d.d_assets.toFixed(2)}</td>
+              <td class="r">—</td>
+              <td class="r">${fmt(d.total_dv01_assets)}M</td>
+            </tr>
+            <tr class="section-row"><td colspan="8">Liabilities</td></tr>
+            ${lRows}
+            <tr style="font-weight:500;font-size:0.7rem;color:var(--text)">
+              <td>Total Liabilities</td>
+              <td class="r">${fmt(liabilities.reduce((s,l)=>s+l.amount,0))}M</td>
+              <td class="r">—</td><td class="r">—</td>
+              <td class="r">${fmt(d.pv_liabilities)}M</td>
+              <td class="r">${d.d_liabilities.toFixed(2)}</td>
+              <td class="r">—</td>
+              <td class="r">${fmt(d.total_dv01_liabs)}M</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>`;
+
+  renderCharts(d);
+}
+
+function renderCharts(d) {
+  const scLabels = Object.values(d.scenarios).map(s => s.label);
+  const scDeltas = Object.values(d.scenarios).map(s => s.delta_eve);
+  const scColors = scDeltas.map(v => v >= 0 ? '#10b981' : '#ef4444');
+  const limPos   = Array(scLabels.length).fill( d.brsa_limit_pct / 100 * d.tier1_capital);
+  const limNeg   = Array(scLabels.length).fill(-d.brsa_limit_pct / 100 * d.tier1_capital);
+
+  Plotly.newPlot('chartEVE', [
+    { type:'bar', x:scLabels, y:scDeltas, marker:{color:scColors},
+      text:scDeltas.map(v=>fmt(v)+'M'), textposition:'outside', textfont:{size:8,color:'#94a3b8'} },
+    { type:'scatter', x:scLabels, y:limPos,  mode:'lines', line:{color:'#10b981',dash:'dot',width:1.5}, name:'+BRSA Limit' },
+    { type:'scatter', x:scLabels, y:limNeg,  mode:'lines', line:{color:'#ef4444',dash:'dot',width:1.5}, name:'-BRSA Limit' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:70,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{tickfont:{size:8},gridcolor:'#1e2233',tickangle:-30},
+    yaxis:{gridcolor:'#1e2233',ticksuffix:'M'},
+    legend:{font:{size:8},bgcolor:'transparent'},
+  }, {displayModeBar:false, responsive:true});
+
+  const aX = d.asset_details.map(a => a.maturity_years);
+  const aY = d.asset_details.map(a => a.mod_duration);
+  const aS = d.asset_details.map(a => Math.max(8, Math.sqrt(a.amount)*1.2));
+  const lX = d.liability_details.map(l => l.maturity_years);
+  const lY = d.liability_details.map(l => l.mod_duration);
+  const lS = d.liability_details.map(l => Math.max(8, Math.sqrt(l.amount)*1.2));
+
+  Plotly.newPlot('chartDur', [
+    { type:'scatter', mode:'markers', x:aX, y:aY, marker:{color:'#2563eb',size:aS,opacity:0.8,line:{color:'#1d4ed8',width:1}},
+      text:d.asset_details.map(a=>a.name), name:'Assets',
+      hovertemplate:'%{text}<br>Maturity: %{x:.1f}Y<br>Mod.Dur: %{y:.2f}<extra></extra>' },
+    { type:'scatter', mode:'markers', x:lX, y:lY, marker:{color:'#ef4444',size:lS,opacity:0.8,line:{color:'#dc2626',width:1}},
+      text:d.liability_details.map(l=>l.name), name:'Liabilities',
+      hovertemplate:'%{text}<br>Maturity: %{x:.1f}Y<br>Mod.Dur: %{y:.2f}<extra></extra>' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:40,l:45,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{title:{text:'Maturity (years)',font:{size:9}},gridcolor:'#1e2233'},
+    yaxis:{title:{text:'Modified Duration',font:{size:9}},gridcolor:'#1e2233'},
+    legend:{font:{size:9},bgcolor:'transparent'},
+  }, {displayModeBar:false, responsive:true});
+}
+
+function fmt(v) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});
+}
+
+renderList('assetsList', assets,      'asset');
+renderList('liabsList',  liabilities, 'liability');
+
+// ── Balance sheet session ─────────────────────────────────────────────────────
+async function loadFromSession() {
+  try {
+    const r = await fetch('/api/session/balance-sheet');
+    const d = await r.json();
+    if (!d.has_session) { alert('Kayıtlı aktif oturum yok.\nÖnce Balance Sheet sayfasına gidin ve kaydedin.'); return; }
+    assets      = d.assets      || [];
+    liabilities = d.liabilities || [];
+    if (d.base_rate) document.getElementById('discRate').value = d.base_rate;
+    if (d.tier1_capital) document.getElementById('tier1').value = d.tier1_capital;
+    renderList('assetsList', assets,      'asset');
+    renderList('liabsList',  liabilities, 'liability');
+    const t = document.createElement('div');
+    t.textContent = '📋 Oturum yüklendi ✓';
+    t.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:var(--gold-dim);color:var(--gold);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:.5rem 1rem;font-size:.75rem;font-family:var(--font-mono)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 2500);
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+
+async function saveToSession() {
+  const payload = {
+    name: 'EVE Balance Sheet',
+    base_rate: parseFloat(document.getElementById('discRate').value),
+    tier1_capital: parseFloat(document.getElementById('tier1').value),
+    assets, liabilities
+  };
+  const r = await fetch('/api/session/balance-sheet', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const d = await r.json();
+  const t = document.createElement('div');
+  t.textContent = d.ok ? '💾 Oturuma kaydedildi ✓' : '✗ Kayıt hatası';
+  t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:${d.ok?'var(--green-dim)':'var(--red-dim)'};color:${d.ok?'var(--green)':'var(--red)'};border:1px solid ${d.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:var(--radius);padding:.5rem 1rem;font-size:.75rem;font-family:var(--font-mono)`;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+
+async function exportEVE() {
+  const payload = {
+    assets, liabilities,
+    discount_rate: parseFloat(document.getElementById('discRate').value),
+    tier1_capital: parseFloat(document.getElementById('tier1').value),
+  };
+  try {
+    const resp = await fetch('/api/export/eve', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Export hatası'); }
+    const blob = await resp.blob();
+    const fname = (resp.headers.get('Content-Disposition') || '').match(/filename="?([^"]+)"?/)?.[1] || 'eve_analysis.xlsx';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+  } catch(e) {
+    alert('Export hatası: ' + e.message);
+  }
+}
+</script>
+{% endblock %}

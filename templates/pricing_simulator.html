@@ -1,0 +1,431 @@
+{% extends 'base.html' %}
+{% block title %}Pricing Simulator — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.layout { display:grid; grid-template-columns:270px 1fr; gap:1rem; align-items:start; }
+.decomp-bar { display:flex; height:26px; border-radius:var(--radius); overflow:hidden; width:100%; margin:0.5rem 0; }
+.decomp-seg { display:flex; align-items:center; justify-content:center; font-size:0.58rem; font-weight:600; overflow:hidden; white-space:nowrap; padding:0 4px; }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.matrix-table { width:100%; border-collapse:collapse; font-size:0.68rem; }
+.matrix-table th { text-align:center; padding:0.3rem 0.5rem; color:var(--text-muted); font-size:0.58rem; text-transform:uppercase; letter-spacing:0.06em; border-bottom:1px solid var(--border); font-weight:400; }
+.matrix-table td { padding:0.35rem 0.5rem; border-bottom:1px solid var(--border-soft); text-align:center; font-variant-numeric:tabular-nums; }
+.verdict-banner { border-radius:var(--radius); padding:0.6rem 1rem; border-left:4px solid; margin-bottom:1rem; font-size:0.78rem; font-weight:600; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Pricing Simulator</h1>
+  <p>Kredi ve mevduat ekonomik kârlılığı — FTP maliyet ayrıştırması, NIM analizi, duyarlılık matrisi</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-loan"    onclick="switchTab('loan')">💼 Kredi Fiyatlama</button>
+  <button class="tab-btn"        id="tab-deposit" onclick="switchTab('deposit')">🏦 Mevduat Kampanyası</button>
+</div>
+
+<!-- ══ LOAN TAB ══ -->
+<div id="panel-loan">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">Kredi Parametreleri</div>
+      <div class="form-group"><label class="form-label">Kredi Türü</label>
+        <select class="form-select" id="lType" onchange="updateOpexHint()">
+          <option value="corporate">Kurumsal</option><option value="sme">KOBİ</option>
+          <option value="mortgage">Konut</option><option value="consumer">Tüketici</option>
+          <option value="auto">Taşıt</option><option value="trade_finance">Dış Ticaret</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Faiz Tipi</label>
+        <select class="form-select" id="lRateType" onchange="toggleRateType()">
+          <option value="fixed">Sabit Faiz</option>
+          <option value="floating_tlref">Değişken — TLREF Bağlı (3M reset)</option>
+          <option value="floating_6m">Değişken — 6 Aylık Yenileme</option>
+        </select>
+      </div>
+      <div id="floatingNote" style="display:none;background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:var(--radius);padding:0.4rem 0.6rem;font-size:0.63rem;color:var(--accent);margin-bottom:0.5rem"></div>
+      <div class="form-group"><label class="form-label">Kredi Notu</label>
+        <select class="form-select" id="lRating">
+          <option value="AAA">AAA</option><option value="AA">AA</option>
+          <option value="A">A</option><option value="BBB" selected>BBB</option>
+          <option value="BB">BB</option><option value="B">B</option><option value="CCC">CCC</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Vade (ay)</label><input class="form-input" id="lTenor" type="number" value="60"/></div>
+      <div class="form-group"><label class="form-label">Tutar (M)</label><input class="form-input" id="lAmount" type="number" value="50"/></div>
+      <div class="form-group"><label class="form-label">Teminat oranı (%)</label><input class="form-input" id="lCollateral" type="number" value="0" step="10"/></div>
+      <hr class="sep"/>
+      <div class="form-group"><label class="form-label">TCMB Politika (%)</label><input class="form-input" id="lBase" type="number" value="42.5" step="0.25"/></div>
+      <div class="form-group"><label class="form-label">TLREF (%)</label><input class="form-input" id="lTLREF" type="number" value="43.20" step="0.1"/></div>
+      <div class="form-group">
+        <label class="form-label">RoE Hedefi (%) <span style="color:var(--text-muted);font-size:0.58rem">Tipik: %15-25</span></label>
+        <input class="form-input" id="lRoe" type="number" value="20"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">OpEx (%) <span id="opexHint" style="color:var(--text-muted);font-size:0.58rem">Kurumsal: %1.5-2.5</span></label>
+        <input class="form-input" id="lOpex" type="number" value="2.5" step="0.1"/>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CET1 Oranı (%) <span style="color:var(--text-muted);font-size:0.58rem">BDDK min: %10.5</span></label>
+        <input class="form-input" id="lCap" type="number" value="12"/>
+      </div>
+      <hr class="sep"/>
+      <div id="fixedRateInputs">
+        <div class="form-group"><label class="form-label">Müşteri Fiyatı (%) — boş = min hesapla</label><input class="form-input" id="lClientRate" type="number" step="0.01" placeholder="örn. 52.9"/></div>
+        <div class="form-group"><label class="form-label">Hedef NIM (bps)</label><input class="form-input" id="lTargetNIM" type="number" value="100"/></div>
+      </div>
+      <div id="floatingRateInputs" style="display:none">
+        <div class="form-group"><label class="form-label">Müşteri Spread (bps) — boş = min spread hesapla</label><input class="form-input" id="lClientSpread" type="number" step="10" placeholder="örn. 850"/></div>
+        <div class="form-group"><label class="form-label">Hedef NIM (bps)</label><input class="form-input" id="lTargetNIMF" type="number" value="100"/></div>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:0.5rem;margin:0">
+        <label class="toggle"><input type="checkbox" id="lPrepay"/><span class="toggle-slider"></span></label>
+        <span class="toggle-label" style="font-size:0.7rem">Erken ödeme opsiyonu (+25bps)</span>
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:0.75rem" onclick="priceLoan()">▶ Hesapla</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem"  onclick="loanSample()">Sample</button>
+    </div>
+    <div id="loanResults">
+      <div class="coming-soon"><div class="coming-soon-icon">💼</div><h2>Kredi Fiyatlama</h2>
+      <p>Müşteri faizi girin → ekonomik kârlılık hesaplanır.<br>Boş bırakın → hedef NIM'e göre minimum fiyat hesaplanır.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DEPOSIT TAB ══ -->
+<div id="panel-deposit" style="display:none">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">Mevduat Kampanya Parametreleri</div>
+      <div class="form-group"><label class="form-label">Mevduat Türü</label>
+        <select class="form-select" id="dType">
+          <option value="time_3m">Vadeli 3M</option><option value="time_6m">Vadeli 6M</option>
+          <option value="time_12m">Vadeli 12M</option><option value="demand">Vadesiz</option>
+          <option value="savings">Tasarruf</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Vade (ay)</label><input class="form-input" id="dTenor" type="number" value="3"/></div>
+      <div class="form-group"><label class="form-label">Kampanya Tutarı (M)</label><input class="form-input" id="dAmount" type="number" value="1000"/></div>
+      <div class="form-group"><label class="form-label">Mevcut Faiz (%)</label><input class="form-input" id="dCurrent" type="number" step="0.1" value="40.0"/></div>
+      <div class="form-group"><label class="form-label">Kampanya Faizi (%) — teklif edilecek</label><input class="form-input" id="dOffered" type="number" step="0.1" value="42.5"/></div>
+      <div class="form-group"><label class="form-label">Deposit Beta</label><input class="form-input" id="dBeta" type="number" step="0.01" value="0.80"/></div>
+      <hr class="sep"/>
+      <div class="form-group"><label class="form-label">TCMB Politika (%)</label><input class="form-input" id="dBase" type="number" value="42.5" step="0.25"/></div>
+      <div class="form-group"><label class="form-label">Portföy NII (M)</label><input class="form-input" id="dNII" type="number" value="620"/></div>
+      <div class="form-group"><label class="form-label">Toplam Mevduat (M)</label><input class="form-input" id="dTotal" type="number" value="6000"/></div>
+      <button class="btn btn-primary w-full" style="margin-top:0.75rem" onclick="priceDeposit()">▶ Analiz Et</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem"  onclick="depositSample()">Sample</button>
+    </div>
+    <div id="depositResults">
+      <div class="coming-soon"><div class="coming-soon-icon">🏦</div><h2>Mevduat Kampanya Analizi</h2>
+      <p>Kampanya faizini girin → NII etkisi, FTP spread'i ve kampanya matrisi hesaplanır.</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(t) {
+  ['loan','deposit'].forEach(x => {
+    document.getElementById('panel-'+x).style.display = x===t?'':'none';
+    document.getElementById('tab-'+x).classList.toggle('active',x===t);
+  });
+}
+
+// ── Loan ─────────────────────────────────────────────────────────────────────
+const OPEX_HINTS = {
+  corporate:'Kurumsal: %1.5-2.5', sme:'KOBİ: %2.5-4.0',
+  consumer:'Tüketici: %3.0-5.0', mortgage:'Konut: %1.0-2.0',
+  auto:'Taşıt: %2.0-3.5', trade_finance:'Dış Ticaret: %1.5-3.0',
+};
+const FLOATING_NOTES = {
+  floating_tlref: 'Her 3 ayda TLREF + spread olarak yenilenir. Faiz riski müşteride — LP çok düşük.',
+  floating_6m:    'Her 6 ayda piyasa faizine göre yenilenir. Orta risk profili.',
+};
+
+function updateOpexHint() {
+  const type = document.getElementById('lType').value;
+  document.getElementById('opexHint').textContent = OPEX_HINTS[type] || '';
+}
+function toggleRateType() {
+  const rt = document.getElementById('lRateType').value;
+  const isFloat = rt !== 'fixed';
+  document.getElementById('fixedRateInputs').style.display   = isFloat ? 'none' : '';
+  document.getElementById('floatingRateInputs').style.display= isFloat ? '' : 'none';
+  const noteEl = document.getElementById('floatingNote');
+  if (isFloat) { noteEl.style.display=''; noteEl.textContent = FLOATING_NOTES[rt]||''; }
+  else noteEl.style.display = 'none';
+}
+
+function loanSample() {
+  document.getElementById('lType').value       = 'corporate';
+  document.getElementById('lRateType').value   = 'fixed';
+  document.getElementById('lRating').value     = 'BBB';
+  document.getElementById('lTenor').value      = '60';
+  document.getElementById('lAmount').value     = '50';
+  document.getElementById('lBase').value       = '42.5';
+  document.getElementById('lTLREF').value      = '43.20';
+  document.getElementById('lRoe').value        = '20';
+  document.getElementById('lOpex').value       = '2.0';
+  document.getElementById('lCap').value        = '12';
+  document.getElementById('lClientRate').value = '';
+  document.getElementById('lTargetNIM').value  = '100';
+  document.getElementById('lCollateral').value = '0';
+  toggleRateType();
+  updateOpexHint();
+}
+
+async function priceLoan() {
+  document.getElementById('loanResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Hesaplanıyor...</div>';
+  const rateType = document.getElementById('lRateType').value;
+  const isFloat  = rateType !== 'fixed';
+  const cr       = document.getElementById('lClientRate').value;
+  const cs       = document.getElementById('lClientSpread').value;
+  try {
+    const resp = await fetch('/api/pricing/loan', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        base_rate:        parseFloat(document.getElementById('lBase').value),
+        tlref:            parseFloat(document.getElementById('lTLREF').value),
+        tenor_months:     parseFloat(document.getElementById('lTenor').value),
+        loan_type:        document.getElementById('lType').value,
+        rate_type:        rateType,
+        credit_rating:    document.getElementById('lRating').value,
+        amount_m:         parseFloat(document.getElementById('lAmount').value),
+        client_rate:      (!isFloat && cr) ? parseFloat(cr) : undefined,
+        client_spread:    (isFloat  && cs) ? parseFloat(cs) : undefined,
+        target_nim_bps:   isFloat
+                            ? parseFloat(document.getElementById('lTargetNIMF').value)||100
+                            : parseFloat(document.getElementById('lTargetNIM').value)||100,
+        roe_target_pct:   parseFloat(document.getElementById('lRoe').value),
+        opex_pct:         parseFloat(document.getElementById('lOpex').value),
+        capital_ratio_pct:parseFloat(document.getElementById('lCap').value),
+        has_prepayment:   document.getElementById('lPrepay').checked,
+        collateral_pct:   parseFloat(document.getElementById('lCollateral').value)||0,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderLoan(d);
+  } catch(err) {
+    document.getElementById('loanResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderLoan(d) {
+  const verdictColor = d.nim_bps >= 0 ? 'var(--green)' : 'var(--red)';
+  const total = d.ftp_rate + d.credit_premium + d.opex + d.capital_charge;
+  const pct = x => Math.max(2, (x/total*100)).toFixed(1)+'%';
+
+  // Floating specific
+  const floatingBanner = d.is_floating ? `
+    <div style="background:rgba(37,99,235,.08);border:1px solid rgba(37,99,235,.2);border-radius:var(--radius);padding:0.5rem 0.8rem;margin-bottom:0.75rem;font-size:0.7rem;color:var(--accent)">
+      ⚡ ${d.rate_type_label} — ${d.floating_note || ''}<br>
+      <strong>Minimum Spread: TLREF + ${d.min_spread_bps || '—'}bps</strong>
+      ${d.client_spread_bps ? ` | Müşteri Spread: +${d.client_spread_bps}bps` : ''}
+    </div>` : '';
+
+  // Benchmark box
+  const bm = d.benchmarks;
+  const loanBm = bm?.opex_by_type?.[d.loan_type];
+  const benchmarkBox = loanBm ? `
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem 0.75rem;margin-top:0.5rem;font-size:0.63rem;color:var(--text-muted)">
+      📊 <strong style="color:var(--text)">Sektör Referans:</strong>
+      OpEx ${loanBm.min}%-${loanBm.max}% (tipik ${loanBm.typical}%) ·
+      RoE tipik %${bm.roe_typical.min}-${bm.roe_typical.max} ·
+      CET1 BDDK min %${bm.cet1_bddk_min}
+      <span style="float:right;opacity:0.6">${bm.note}</span>
+    </div>` : '';
+
+  const matrixRows = d.profitability_matrix.map(r => `<tr>
+    <td>${r.rate.toFixed(3)}%</td>
+    <td style="color:${r.nim_bps>=0?'var(--green)':'var(--red)'}">${r.nim_bps>=0?'+':''}${r.nim_bps}bps</td>
+    <td style="color:${r.annual_nim_m>=0?'var(--green)':'var(--red)'}">${r.annual_nim_m>=0?'+':''}${r.annual_nim_m}M</td>
+    <td style="font-size:0.62rem;color:var(--text-muted)">${r.verdict}</td>
+  </tr>`).join('');
+
+  const sensRows = d.rate_sensitivity.map(r => `<tr>
+    <td style="color:${r.shock_pct>0?'var(--red)':'var(--green)'}">${r.shock_pct>=0?'+':''}${r.shock_pct}%</td>
+    <td>${r.ftp.toFixed(3)}%</td>
+    <td>${r.min_rate.toFixed(3)}%</td>
+    <td style="color:${r.nim_bps>=0?'var(--green)':'var(--red)'}">${r.nim_bps>=0?'+':''}${r.nim_bps}bps</td>
+  </tr>`).join('');
+
+  document.getElementById('loanResults').innerHTML = `
+    <div class="verdict-banner" style="background:${verdictColor}12;border-color:${verdictColor};color:${verdictColor}">
+      ${d.verdict} — NIM: ${d.nim_bps>=0?'+':''}${d.nim_bps}bps &nbsp;|&nbsp; Yıllık NIM: ${d.nim_bps>=0?'+':''}${d.annual_nim_m}M &nbsp;|&nbsp; Müşteri faizi: ${d.client_rate}%
+    </div>
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Müşteri Faizi</div><div class="stat-value accent">${d.client_rate}%</div></div>
+      <div class="stat-box"><div class="stat-label">Min Fiyat (FTP+all-in)</div><div class="stat-value">${d.min_rate}%</div></div>
+      <div class="stat-box"><div class="stat-label">NIM</div><div class="stat-value" style="color:${verdictColor}">${d.nim_bps>=0?'+':''}${d.nim_bps}bps</div></div>
+      <div class="stat-box"><div class="stat-label">Yıllık NIM Geliri</div><div class="stat-value" style="color:${verdictColor}">${d.annual_nim_m}M</div></div>
+      <div class="stat-box"><div class="stat-label">Sermaye İhtiyacı</div><div class="stat-value">${d.capital_needed_m}M</div><div class="stat-sub">RWA ${(d.rwa_weight*100).toFixed(0)}%</div></div>
+      <div class="stat-box"><div class="stat-label">Fiili RoE</div><div class="stat-value ${d.roe_actual_pct>=15?'positive':'negative'}">${d.roe_actual_pct}%</div></div>
+    </div>
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">Maliyet Ayrıştırması</div>
+        <div class="decomp-bar">
+          <div class="decomp-seg" style="width:${pct(d.base_rate)};background:var(--panel);color:var(--text-muted)">Base ${d.base_rate}%</div>
+          <div class="decomp-seg" style="width:${pct(d.lp_bps/100+d.opt_bps/100)};background:var(--accent);color:#fff">LP+Opt</div>
+          <div class="decomp-seg" style="width:${pct(d.credit_premium)};background:var(--red);color:#fff">Kredi</div>
+          <div class="decomp-seg" style="width:${pct(d.opex)};background:#475569;color:#fff">OpEx</div>
+          <div class="decomp-seg" style="width:${pct(d.capital_charge)};background:var(--gold);color:#000">Ser.</div>
+        </div>
+        <div class="metric-row"><span class="metric-label">Base rate (TCMB)</span><span class="metric-val">${d.base_rate}%</span></div>
+        <div class="metric-row"><span class="metric-label">${d.is_floating ? `Repricing (${d.repricing_months}M)` : `Vade (${d.tenor_months}M)`} LP</span><span class="metric-val accent">+${d.lp_bps}bps ${d.is_floating ? '(floating — düşük)' : ''}</span></div>
+        <div class="metric-row"><span class="metric-label">FTP Base (${d.is_floating ? 'TLREF' : 'Politika Faizi'})</span><span class="metric-val">${d.ftp_base}%</span></div>
+        <div class="metric-row"><span class="metric-label">Opsiyon (erken ödeme)</span><span class="metric-val accent">+${d.opt_bps}bps</span></div>
+        <div class="metric-row"><span class="metric-label">FTP Rate</span><span class="metric-val" style="color:var(--green)">${d.ftp_rate}%</span></div>
+        <div class="metric-row"><span class="metric-label">Kredi Risk Primi (${d.rating})</span><span class="metric-val" style="color:var(--red)">${d.credit_premium}%</span></div>
+        <div class="metric-row"><span class="metric-label">Operasyonel Maliyet</span><span class="metric-val">${d.opex}%</span></div>
+        <div class="metric-row"><span class="metric-label">Sermaye Masrafı</span><span class="metric-val gold">${d.capital_charge}%</span></div>
+        <div class="metric-row" style="border:none;margin-top:0.25rem"><span class="metric-label" style="font-weight:600;color:var(--text)">Minimum Fiyat</span><span class="metric-val" style="font-size:0.85rem;color:var(--accent)">${d.min_rate}%</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Kârlılık Matrisi</div>
+        <table class="matrix-table">
+          <thead><tr><th>Fiyat</th><th>NIM</th><th>Yıllık NIM</th><th>Durum</th></tr></thead>
+          <tbody>${matrixRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">TCMB Faiz Duyarlılığı — NIM nasıl değişir?</div>
+      <div class="chart-box" id="chartSens" style="height:200px"></div>
+    </div>`;
+
+  const floatSensHTML = (d.is_floating && d.floating_sensitivity && d.floating_sensitivity.length) ? `
+    <div class="card" style="margin-top:0.75rem">
+      <div class="card-title">TLREF Duyarlılığı — Değişken Faiz Senaryosu</div>
+      <table class="matrix-table">
+        <thead><tr>
+          <th>TLREF Şoku</th><th>Shocked TLREF</th><th>Müşteri Faizi</th>
+          <th>Min Fiyat</th><th>NIM</th><th>Durum</th>
+        </tr></thead>
+        <tbody>${d.floating_sensitivity.map(r => `<tr>
+          <td style="color:${r.tlref_shock>0?'var(--red)':'var(--green)'}">${r.tlref_shock>=0?'+':''}${r.tlref_shock}%</td>
+          <td>${r.shocked_tlref.toFixed(2)}%</td>
+          <td>${r.client_rate.toFixed(3)}%</td>
+          <td>${r.min_rate.toFixed(3)}%</td>
+          <td style="color:${r.nim_bps>=0?'var(--green)':'var(--red)'}">${r.nim_bps>=0?'+':''}${r.nim_bps}bps</td>
+          <td style="font-size:0.62rem;color:var(--text-muted)">${r.verdict}</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>` : '';
+
+  document.getElementById('loanResults').innerHTML += benchmarkBox + floatSensHTML;
+
+  Plotly.newPlot('chartSens', [
+    { type:'scatter', x:d.rate_sensitivity.map(r=>(r.shock_pct>=0?'+':'')+r.shock_pct+'%'),
+      y:d.rate_sensitivity.map(r=>r.nim_bps),
+      mode:'lines+markers', name:'NIM (bps)',
+      line:{color:'#2563eb',width:2}, marker:{size:7,color:'#2563eb'},
+      fill:'tozeroy', fillcolor:'rgba(37,99,235,0.06)' },
+    { type:'scatter', x:d.rate_sensitivity.map(r=>(r.shock_pct>=0?'+':'')+r.shock_pct+'%'),
+      y:Array(d.rate_sensitivity.length).fill(0), mode:'lines',
+      line:{color:'#64748b',dash:'dot',width:1}, showlegend:false },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:40,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{title:{text:'TCMB Şoku',font:{size:9}},gridcolor:'#1e2233'},
+    yaxis:{title:{text:'NIM (bps)',font:{size:9}},gridcolor:'#1e2233'},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+}
+
+// ── Deposit ──────────────────────────────────────────────────────────────────
+function depositSample() {
+  document.getElementById('dType').value    = 'time_3m';
+  document.getElementById('dTenor').value   = '3';
+  document.getElementById('dAmount').value  = '1000';
+  document.getElementById('dCurrent').value = '40.0';
+  document.getElementById('dOffered').value = '42.5';
+  document.getElementById('dBeta').value    = '0.80';
+  document.getElementById('dBase').value    = '42.5';
+  document.getElementById('dNII').value     = '620';
+  document.getElementById('dTotal').value   = '6000';
+}
+
+async function priceDeposit() {
+  document.getElementById('depositResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Analiz ediliyor...</div>';
+  try {
+    const resp = await fetch('/api/pricing/deposit', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        base_rate:         parseFloat(document.getElementById('dBase').value),
+        deposit_type:      document.getElementById('dType').value,
+        tenor_months:      parseFloat(document.getElementById('dTenor').value),
+        amount_m:          parseFloat(document.getElementById('dAmount').value),
+        offered_rate:      parseFloat(document.getElementById('dOffered').value),
+        current_rate:      parseFloat(document.getElementById('dCurrent').value),
+        deposit_beta:      parseFloat(document.getElementById('dBeta').value),
+        portfolio_nii_m:   parseFloat(document.getElementById('dNII').value),
+        total_deposits_m:  parseFloat(document.getElementById('dTotal').value),
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderDeposit(d);
+  } catch(err) {
+    document.getElementById('depositResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderDeposit(d) {
+  const vColor = d.spread_to_ftp >= 0 ? 'var(--green)' : 'var(--red)';
+  const matrixRows = d.campaign_matrix.map(r => `<tr>
+    <td>${r.offered_rate.toFixed(2)}%</td>
+    <td>${r.all_in_cost.toFixed(3)}%</td>
+    <td style="color:${r.spread_to_ftp>=0?'var(--green)':'var(--red)'}">${r.spread_to_ftp>=0?'+':''}${r.spread_to_ftp.toFixed(3)}%</td>
+    <td style="color:${r.nii_impact_m>=0?'var(--green)':'var(--red)'}">${r.nii_impact_m>=0?'+':''}${r.nii_impact_m}M</td>
+    <td style="font-size:0.62rem;color:var(--text-muted)">${r.verdict}</td>
+  </tr>`).join('');
+
+  document.getElementById('depositResults').innerHTML = `
+    <div class="verdict-banner" style="background:${vColor}12;border-color:${vColor};color:${vColor}">
+      ${d.verdict} — ${d.verdict_detail}
+    </div>
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Kampanya Faizi</div><div class="stat-value accent">${d.offered_rate}%</div></div>
+      <div class="stat-box"><div class="stat-label">FTP Rate</div><div class="stat-value">${d.ftp_rate}%</div><div class="stat-sub">+${d.lp_bps}bps LP</div></div>
+      <div class="stat-box"><div class="stat-label">FTP Spread</div><div class="stat-value" style="color:${vColor}">${d.spread_to_ftp>=0?'+':''}${d.spread_to_ftp}%</div></div>
+      <div class="stat-box"><div class="stat-label">Maliyet Artışı</div><div class="stat-value negative">+${d.cost_delta_bps}bps</div><div class="stat-sub">${d.annual_cost_delta_m}M/yıl</div></div>
+      <div class="stat-box"><div class="stat-label">NII Etkisi</div><div class="stat-value negative">${d.nii_impact_m}M</div><div class="stat-sub">${d.nii_impact_pct}% portföy NII</div></div>
+      <div class="stat-box"><div class="stat-label">Portföy Payı</div><div class="stat-value">${d.portfolio_share_pct}%</div></div>
+    </div>
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">Kampanya Detayları</div>
+        <div class="metric-row"><span class="metric-label">Mevcut faiz</span><span class="metric-val">${d.current_rate}%</span></div>
+        <div class="metric-row"><span class="metric-label">Kampanya faizi</span><span class="metric-val accent">${d.offered_rate}%</span></div>
+        <div class="metric-row"><span class="metric-label">All-in maliyet (TMSF+BDDK)</span><span class="metric-val">${d.all_in_cost}%</span></div>
+        <div class="metric-row"><span class="metric-label">FTP rate (base+LP)</span><span class="metric-val gold">${d.ftp_rate}%</span></div>
+        <div class="metric-row"><span class="metric-label">Spread to FTP</span><span class="metric-val" style="color:${vColor}">${d.spread_to_ftp>=0?'+':''}${d.spread_to_ftp}%</span></div>
+        <div class="metric-row"><span class="metric-label">Tahmini rakip faiz (beta ${d.deposit_beta||'—'}×policy)</span><span class="metric-val">${d.competitor_est}%</span></div>
+        <div class="metric-row"><span class="metric-label">Rekabetçi fark</span><span class="metric-val">${d.competitive_gap>=0?'+':''}${d.competitive_gap}%</span></div>
+        <div class="metric-row" style="border:none"><span class="metric-label">Breakeven kredi faizi</span><span class="metric-val">${d.breakeven_loan_rate}%</span></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Kampanya Matrisi — Farklı Faiz Seviyelerinde NII</div>
+        <table class="matrix-table">
+          <thead><tr><th>Faiz</th><th>All-in</th><th>vs FTP</th><th>NII Etkisi</th><th></th></tr></thead>
+          <tbody>${matrixRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+</script>
+{% endblock %}

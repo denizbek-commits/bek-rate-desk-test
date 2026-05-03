@@ -1,0 +1,414 @@
+{% extends "base.html" %}
+
+{% block title %}Portföy Risk Tablosu — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+  .editable-row {
+    transition: background 0.2s;
+  }
+
+  .editable-row:hover {
+    background: var(--border-soft);
+  }
+
+  .port-table {
+    width: 100%;
+    font-size: 0.75rem;
+    border-collapse: collapse;
+  }
+
+  .port-table thead tr {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .port-table td,
+  .port-table th {
+    padding: 0.5rem 0.6rem;
+    text-align: right;
+  }
+
+  .port-table th {
+    text-align: right;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    font-weight: 600;
+  }
+
+  .port-table td:first-child,
+  .port-table th:first-child {
+    text-align: left;
+  }
+
+  .port-table tbody tr {
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .port-table tbody tr.asset-row {
+    border-left: 3px solid var(--green-dim);
+  }
+
+  .port-table tbody tr.liability-row {
+    border-left: 3px solid var(--red-dim);
+  }
+
+  .port-table tbody tr.totals-row {
+    background: var(--panel);
+    border-top: 2px solid var(--border);
+    font-weight: 600;
+    border-left: 3px solid var(--gold);
+  }
+
+  .kpi-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    text-align: center;
+  }
+
+  .kpi-box .kpi-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .kpi-box .kpi-value {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .add-form {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1rem;
+    display: none;
+  }
+
+  .add-form.show {
+    display: block;
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .form-grid input,
+  .form-grid select {
+    padding: 0.5rem;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+  }
+
+  .form-grid label {
+    display: block;
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 0.2rem;
+  }
+
+  .del-btn {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--red);
+    border: 1px solid var(--red-dim);
+    padding: 0.25rem 0.5rem;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.7rem;
+    transition: all 0.2s;
+  }
+
+  .del-btn:hover {
+    background: var(--red);
+    color: white;
+  }
+
+  @media print {
+    .sidebar, .topbar, .btn, #shortcutToast {
+      display: none !important;
+    }
+    .main {
+      margin-left: 0 !important;
+      padding: 1rem !important;
+      max-width: 100vw !important;
+    }
+    body::before {
+      display: none !important;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>📊 Portföy Risk Tablosu</h1>
+  <p>Çoklu tahvil OAS/duration/DV01 analizi · EVE convention DV01</p>
+</div>
+
+<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; gap: 0.75rem;">
+  <div style="display: flex; gap: 0.75rem;">
+    <button class="btn btn-ghost" onclick="toggleAddForm()">➕ Pozisyon Ekle</button>
+    <button class="btn btn-ghost" onclick="savePortfolio()">💾 Portföyü Kaydet</button>
+    <button class="btn btn-primary" onclick="runAnalysis()">▶ Analiz Et</button>
+    <button class="btn btn-ghost" onclick="window.print()">🖨 Yazdır</button>
+  </div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 1rem; margin-bottom: 1.5rem;">
+  <div class="kpi-box">
+    <div class="kpi-label">Net DV01</div>
+    <div class="kpi-value" id="kpiNetDV01">—</div>
+    <div style="font-size: 0.65rem; color: var(--text-muted);">M/bps</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Ort. ModD</div>
+    <div class="kpi-value" id="kpiAvgDur">—</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Toplam Nominal</div>
+    <div class="kpi-value" id="kpiTotalPar">—</div>
+    <div style="font-size: 0.65rem; color: var(--text-muted);">M</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Piy. Değeri</div>
+    <div class="kpi-value" id="kpiTotalMV">—</div>
+    <div style="font-size: 0.65rem; color: var(--text-muted);">M</div>
+  </div>
+  <div class="kpi-box">
+    <div class="kpi-label">Pozisyon</div>
+    <div class="kpi-value" id="kpiPosCount">—</div>
+  </div>
+</div>
+
+<div id="addForm" class="add-form">
+  <div style="font-weight: 600; margin-bottom: 0.75rem;">Yeni Pozisyon Ekle</div>
+  <div class="form-grid">
+    <div><label>Ad</label><input type="text" id="fName" placeholder="DIBS 2026"/></div>
+    <div><label>Para Br.</label><select id="fCcy"><option>TRY</option><option>USD</option><option>EUR</option></select></div>
+    <div><label>Taraf</label><select id="fSide"><option value="asset">Varlık</option><option value="liability">Yük.</option></select></div>
+    <div><label>Nominal (M)</label><input type="number" id="fPar" placeholder="500" step="1"/></div>
+  </div>
+  <div class="form-grid">
+    <div><label>Kupon %</label><input type="number" id="fCpn" placeholder="28.5" step="0.1"/></div>
+    <div><label>Vade (Y)</label><input type="number" id="fMat" placeholder="1.5" step="0.1"/></div>
+    <div><label>Fiyat %</label><input type="number" id="fPri" placeholder="100.2" step="0.1"/></div>
+    <div><label>Bono Tipi</label><select id="fType"><option value="fixed">Fixed</option><option value="floating">Floating</option></select></div>
+  </div>
+  <div class="form-grid">
+    <div><label>Frekans</label><select id="fFreq"><option value="1">Yıllık</option><option value="2" selected>Yarıyıl</option><option value="4">Üç ay</option></select></div>
+    <div style="grid-column: 2/-1;"></div>
+  </div>
+  <button class="btn btn-primary" onclick="addPosition()" style="width: 100%; margin-bottom: 0.5rem;">Ekle</button>
+  <button class="btn btn-ghost" onclick="toggleAddForm()" style="width: 100%;">İptal</button>
+</div>
+
+<div class="card">
+  <div class="card-header">Portföy</div>
+  <div style="overflow-x: auto;">
+    <table id="portfolioTable" class="port-table">
+      <thead>
+        <tr>
+          <th>Ad</th>
+          <th>Ccy</th>
+          <th>Taraf</th>
+          <th>Nom.(M)</th>
+          <th>Kupon%</th>
+          <th>Vade(Y)</th>
+          <th>Fiyat</th>
+          <th>YTM%</th>
+          <th>MacD</th>
+          <th>ModD</th>
+          <th>DV01/100</th>
+          <th>Port.DV01(M)</th>
+          <th>Piy.Değ.(M)</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="14" style="text-align: center; padding: 1rem; color: var(--text-muted);">Portföy yüklenmek üzere...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+window.portfolioData = [];
+
+function toggleAddForm() {
+  document.getElementById('addForm').classList.toggle('show');
+}
+
+function loadPortfolio() {
+  fetch('/api/dealer/portfolio')
+    .then(r => r.json())
+    .then(data => {
+      window.portfolioData = data;
+      renderPortfolioTable();
+    })
+    .catch(e => console.error('Load portfolio error:', e));
+}
+
+function addPosition() {
+  const pos = {
+    id: `p_${Date.now()}`,
+    name: document.getElementById('fName').value || 'New Position',
+    currency: document.getElementById('fCcy').value || 'TRY',
+    side: document.getElementById('fSide').value || 'asset',
+    par_m: parseFloat(document.getElementById('fPar').value) || 100,
+    coupon_pct: parseFloat(document.getElementById('fCpn').value) || 5,
+    maturity_years: parseFloat(document.getElementById('fMat').value) || 5,
+    market_price_pct: parseFloat(document.getElementById('fPri').value) || 100,
+    bond_type: document.getElementById('fType').value || 'fixed',
+    freq: parseInt(document.getElementById('fFreq').value) || 2,
+  };
+
+  window.portfolioData.push(pos);
+  renderPortfolioTable();
+  toggleAddForm();
+
+  document.getElementById('fName').value = '';
+  document.getElementById('fPar').value = '';
+  document.getElementById('fCpn').value = '';
+  document.getElementById('fMat').value = '';
+  document.getElementById('fPri').value = '';
+}
+
+function deletePosition(id) {
+  window.portfolioData = window.portfolioData.filter(p => p.id !== id);
+  renderPortfolioTable();
+}
+
+function renderPortfolioTable() {
+  const tbody = document.querySelector('#portfolioTable tbody');
+  tbody.innerHTML = '';
+
+  window.portfolioData.forEach(pos => {
+    const tr = document.createElement('tr');
+    tr.className = pos.side === 'asset' ? 'asset-row' : 'liability-row';
+    tr.innerHTML = `
+      <td>${pos.name}</td>
+      <td style="text-align: center;">${pos.currency}</td>
+      <td style="text-align: center;">${pos.side === 'asset' ? '📈' : '📉'}</td>
+      <td>${pos.par_m.toFixed(1)}</td>
+      <td>${pos.coupon_pct.toFixed(2)}</td>
+      <td>${pos.maturity_years.toFixed(2)}</td>
+      <td>${pos.market_price_pct.toFixed(2)}</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td>—</td>
+      <td><button class="del-btn" onclick="deletePosition('${pos.id}')">Sil</button></td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const totalsRow = document.createElement('tr');
+  totalsRow.className = 'totals-row';
+  totalsRow.innerHTML = `
+    <td>TOPLAM</td>
+    <td colspan="12" style="text-align: right;">—</td>
+    <td></td>
+  `;
+  tbody.appendChild(totalsRow);
+}
+
+function savePortfolio() {
+  fetch('/api/dealer/portfolio', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(window.portfolioData),
+  })
+    .then(r => r.json())
+    .then(data => {
+      console.log('Portfolio saved:', data);
+      alert('Portföy kaydedildi');
+    })
+    .catch(e => console.error('Save error:', e));
+}
+
+function runAnalysis() {
+  fetch('/api/portfolio-oas/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ positions: window.portfolioData }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      renderAnalysisResults(data);
+    })
+    .catch(e => console.error('Analysis error:', e));
+}
+
+function renderAnalysisResults(data) {
+  document.getElementById('kpiNetDV01').textContent = (data.total_net_dv01 || 0).toFixed(2);
+  document.getElementById('kpiAvgDur').textContent = (data.portfolio_avg_dur || 0).toFixed(2);
+  document.getElementById('kpiTotalPar').textContent = (data.total_par_m || 0).toFixed(1);
+  document.getElementById('kpiTotalMV').textContent = (data.total_market_value_m || 0).toFixed(1);
+  document.getElementById('kpiPosCount').textContent = data.position_count || 0;
+
+  const tbody = document.querySelector('#portfolioTable tbody');
+  tbody.innerHTML = '';
+
+  if (data.positions && data.positions.length > 0) {
+    data.positions.forEach(pos => {
+      const tr = document.createElement('tr');
+      const origPos = window.portfolioData.find(p => p.id === pos.id);
+      tr.className = origPos?.side === 'asset' ? 'asset-row' : 'liability-row';
+      tr.innerHTML = `
+        <td>${pos.name}</td>
+        <td style="text-align: center;">${pos.currency}</td>
+        <td style="text-align: center;">${origPos?.side === 'asset' ? '📈' : '📉'}</td>
+        <td>${pos.par_m.toFixed(1)}</td>
+        <td>${pos.coupon_pct.toFixed(2)}</td>
+        <td>${pos.maturity_years.toFixed(2)}</td>
+        <td>${pos.market_price_pct.toFixed(2)}</td>
+        <td>${pos.ytm_pct.toFixed(2)}</td>
+        <td>${pos.mac_duration.toFixed(2)}</td>
+        <td>${pos.mod_duration.toFixed(2)}</td>
+        <td>${pos.dv01_unit.toFixed(4)}</td>
+        <td style="color: var(--gold); font-weight: 600;">${pos.dv01_portfolio_m.toFixed(2)}</td>
+        <td>${pos.market_value_m.toFixed(1)}</td>
+        <td><button class="del-btn" onclick="deletePosition('${pos.id}')">Sil</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+  }
+
+  const totalsRow = document.createElement('tr');
+  totalsRow.className = 'totals-row';
+  totalsRow.innerHTML = `
+    <td>TOPLAM</td>
+    <td colspan="3" style="text-align: right;">${data.total_par_m.toFixed(1)}</td>
+    <td colspan="2"></td>
+    <td colspan="2"></td>
+    <td colspan="2" style="text-align: right;">${data.portfolio_avg_dur.toFixed(2)}</td>
+    <td colspan="1"></td>
+    <td style="text-align: right; color: var(--gold);">${data.total_net_dv01.toFixed(2)}</td>
+    <td style="text-align: right;">${data.total_market_value_m.toFixed(1)}</td>
+    <td></td>
+  `;
+  tbody.appendChild(totalsRow);
+}
+
+window.addEventListener('load', () => {
+  loadPortfolio();
+});
+</script>
+{% endblock %}

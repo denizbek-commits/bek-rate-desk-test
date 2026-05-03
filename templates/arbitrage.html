@@ -1,0 +1,260 @@
+{% extends 'base.html' %}
+{% block title %}Arbitrage — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.scan-bar { display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem; flex-wrap:wrap; }
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+.arb-table { width:100%; border-collapse:collapse; font-size:0.71rem; }
+.arb-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.arb-table td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border-soft); color:var(--text-dim); }
+.arb-table tr:hover td { background:var(--surface); color:var(--text); }
+.arb-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.arb-table .pos { color:var(--green); font-weight:500; }
+.arb-table .neg { color:var(--red);   font-weight:500; }
+.z-bar { display:inline-block; height:6px; border-radius:3px; vertical-align:middle; margin-left:4px; }
+.signal-badge { font-size:0.58rem; border-radius:3px; padding:1px 5px; font-weight:600; }
+.sig-long  { background:var(--green-dim);   color:var(--green); }
+.sig-short { background:var(--red-dim);     color:var(--red); }
+.sig-neut  { background:var(--panel);       color:var(--text-muted); }
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all 0.15s; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Enhanced Arbitrage</h1>
+  <p>Preferred stock peer valuation scanner, Z-score pair analysis — ported from The Bek System</p>
+</div>
+
+<div class="tabs">
+  <div class="tab-btn active" id="tab-peer"  onclick="switchTab('peer')">Peer Valuation</div>
+  <div class="tab-btn"        id="tab-zpair" onclick="switchTab('zpair')">Z-Score Pair Analysis</div>
+</div>
+
+<!-- ══ PEER VALUATION ══ -->
+<div id="panel-peer">
+  <div class="scan-bar">
+    <div class="form-group" style="margin:0;flex:1;max-width:300px">
+      <label class="form-label">Ticker Universe (comma-separated)</label>
+      <input class="form-input" id="peerTickers" value="PFF,FPE,PGX,PFF" placeholder="PFF,BAC-PL,JPM-PD,..."/>
+    </div>
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Lookback (days)</label>
+      <input class="form-input" id="peerLookback" type="number" value="252" style="width:80px"/>
+    </div>
+    <div style="margin-top:1.3rem">
+      <button class="btn btn-primary" onclick="runPeerScan()">▶ Scan Peers</button>
+    </div>
+    <div style="margin-top:1.3rem">
+      <button class="btn btn-ghost" onclick="loadDefaultTickers()">Load Preferred Universe</button>
+    </div>
+  </div>
+
+  <div id="peerResults">
+    <div class="coming-soon"><div class="coming-soon-icon">⚡</div><h2>Peer Valuation</h2>
+    <p>Enter tickers and run scan to see yield spread vs peer median, ranked by richness/cheapness.</p></div>
+  </div>
+</div>
+
+<!-- ══ Z-SCORE PAIR ══ -->
+<div id="panel-zpair" style="display:none">
+  <div class="scan-bar">
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Ticker 1</label>
+      <input class="form-input" id="zt1" placeholder="e.g. PFF" style="width:110px"/>
+    </div>
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Ticker 2</label>
+      <input class="form-input" id="zt2" placeholder="e.g. FPE" style="width:110px"/>
+    </div>
+    <div class="form-group" style="margin:0">
+      <label class="form-label">Lookback (days)</label>
+      <input class="form-input" id="zlookback" type="number" value="504" style="width:80px"/>
+    </div>
+    <div style="margin-top:1.3rem">
+      <button class="btn btn-primary" onclick="runZPair()">▶ Analyze Pair</button>
+    </div>
+  </div>
+  <div id="zpairResults">
+    <div class="coming-soon"><div class="coming-soon-icon">📊</div><h2>Z-Score Pair Analysis</h2>
+    <p>Enter two tickers and run to see Z-score history, hedge ratio, half-life, and signal.</p></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(tab) {
+  document.getElementById('panel-peer').style.display  = tab==='peer'  ? '' : 'none';
+  document.getElementById('panel-zpair').style.display = tab==='zpair' ? '' : 'none';
+  document.getElementById('tab-peer').classList.toggle('active',  tab==='peer');
+  document.getElementById('tab-zpair').classList.toggle('active', tab==='zpair');
+}
+
+function loadDefaultTickers() {
+  document.getElementById('peerTickers').value =
+    'BAC-PL,BAC-PO,JPM-PD,JPM-PM,WFC-PL,WFC-PQ,C-PN,C-PJ,USB-PP,USB-PH,GS-PK,GS-PD,MS-PF,MS-PL';
+}
+
+// ── Peer Valuation (client-side using yfinance via API) ───────────────────
+async function runPeerScan() {
+  const tickerStr = document.getElementById('peerTickers').value.trim();
+  const lookback  = parseInt(document.getElementById('peerLookback').value);
+  if (!tickerStr) { alert('Enter tickers.'); return; }
+  const tickers = tickerStr.split(',').map(t => t.trim().toUpperCase()).filter(Boolean);
+
+  document.getElementById('peerResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Fetching price and dividend data...</div>';
+
+  try {
+    const resp = await fetch('/api/peer-valuation', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({tickers, lookback_days: lookback})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderPeer(d);
+  } catch(err) {
+    document.getElementById('peerResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderPeer(d) {
+  if (!d.items?.length) {
+    document.getElementById('peerResults').innerHTML =
+      '<div class="coming-soon"><p>No data returned — check tickers and try again.</p></div>';
+    return;
+  }
+  const sorted = [...d.items].sort((a,b) => (b.spread_vs_median||0) - (a.spread_vs_median||0));
+  const median = d.universe_median_yield;
+
+  const rows = sorted.map(item => {
+    const spread = item.spread_vs_median;
+    const cls    = spread > 0.2 ? 'pos' : spread < -0.2 ? 'neg' : '';
+    const signal = spread > 0.3 ? '<span class="signal-badge sig-long">CHEAP</span>'
+                 : spread < -0.3 ? '<span class="signal-badge sig-short">RICH</span>'
+                 : '<span class="signal-badge sig-neut">FAIR</span>';
+    const bar    = spread !== null
+      ? `<div class="z-bar" style="width:${Math.min(Math.abs(spread)*15,60)}px;background:${spread>0?'var(--green)':'var(--red)'}"></div>`
+      : '';
+    return `<tr>
+      <td style="font-weight:500;color:var(--text)">${item.ticker}</td>
+      <td class="r">${item.current_yield !== null ? item.current_yield.toFixed(2)+'%' : '—'}</td>
+      <td class="r">${item.current_price !== null ? item.current_price.toFixed(2) : '—'}</td>
+      <td class="r ${cls}">${spread !== null ? (spread>=0?'+':'')+spread.toFixed(2)+'%' : '—'}${bar}</td>
+      <td>${signal}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('peerResults').innerHTML = `
+    <div class="kpi-strip" style="margin-bottom:1rem">
+      <div class="stat-box"><div class="stat-label">Universe Median Yield</div><div class="stat-value">${median?.toFixed(2) ?? '—'}%</div></div>
+      <div class="stat-box"><div class="stat-label">Tickers Scanned</div><div class="stat-value">${d.items.length}</div></div>
+      <div class="stat-box"><div class="stat-label">Cheapest</div><div class="stat-value positive">${sorted[0]?.ticker ?? '—'}</div><div class="stat-sub">+${sorted[0]?.spread_vs_median?.toFixed(2) ?? '—'}% vs median</div></div>
+      <div class="stat-box"><div class="stat-label">Richest</div><div class="stat-value negative">${sorted[sorted.length-1]?.ticker ?? '—'}</div><div class="stat-sub">${sorted[sorted.length-1]?.spread_vs_median?.toFixed(2) ?? '—'}% vs median</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Peer Valuation — Yield Spread vs Universe Median (${median?.toFixed(2) ?? '—'}%)</div>
+      <div style="overflow-x:auto">
+        <table class="arb-table">
+          <thead><tr>
+            <th>Ticker</th><th class="r">Yield</th><th class="r">Price</th>
+            <th class="r">vs Median</th><th>Signal</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card mt-2">
+      <div class="card-title">Yield Spread vs Median</div>
+      <div class="chart-box" id="chartPeer" style="height:220px"></div>
+    </div>`;
+
+  renderPeerChart(sorted, median);
+}
+
+function renderPeerChart(items, median) {
+  const labels  = items.map(i => i.ticker);
+  const spreads = items.map(i => i.spread_vs_median || 0);
+  Plotly.newPlot('chartPeer', [{
+    type:'bar', x:labels, y:spreads,
+    marker:{color: spreads.map(v => v > 0 ? '#10b981' : '#ef4444')},
+    text: spreads.map(v => (v>=0?'+':'')+v.toFixed(2)+'%'),
+    textposition:'outside', textfont:{size:8,color:'#94a3b8'},
+  },{
+    type:'scatter', x:labels, y:Array(labels.length).fill(0),
+    mode:'lines', line:{color:'#64748b',dash:'dot',width:1}, showlegend:false,
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:10,b:50,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233',tickangle:-30,tickfont:{size:8}},
+    yaxis:{gridcolor:'#1e2233',ticksuffix:'%',title:{text:'Spread vs Median',font:{size:9}}},
+    showlegend:false,
+  },{displayModeBar:false,responsive:true});
+}
+
+// ── Z-Score Pair ───────────────────────────────────────────────────────────
+async function runZPair() {
+  const t1 = document.getElementById('zt1').value.trim().toUpperCase();
+  const t2 = document.getElementById('zt2').value.trim().toUpperCase();
+  const lb = parseInt(document.getElementById('zlookback').value);
+  if (!t1 || !t2) { alert('Enter both tickers.'); return; }
+
+  document.getElementById('zpairResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Computing Z-score pair analysis...</div>';
+
+  try {
+    const resp = await fetch(`/api/z-pair-analysis?ticker1=${t1}&ticker2=${t2}&lookback=${lb}`);
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderZPair(d, t1, t2);
+  } catch(err) {
+    document.getElementById('zpairResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderZPair(d, t1, t2) {
+  const z      = d.current_z;
+  const signal = z < (d.z_min * 0.95) ? 'ARM LONG'
+               : z > (d.z_max * 0.95) ? 'ARM SHORT' : 'NEUTRAL';
+  const sigCls = signal==='ARM LONG' ? 'sig-long' : signal==='ARM SHORT' ? 'sig-short' : 'sig-neut';
+
+  const zSeries = d.z_series || [];
+  const dates   = zSeries.map(p => p.date);
+  const zs      = zSeries.map(p => p.z);
+
+  document.getElementById('zpairResults').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Current Z</div><div class="stat-value ${z<-1.5?'positive':z>1.5?'negative':''}">${z?.toFixed(3) ?? '—'}</div></div>
+      <div class="stat-box"><div class="stat-label">Z-Max</div><div class="stat-value">${d.z_max?.toFixed(3) ?? '—'}</div></div>
+      <div class="stat-box"><div class="stat-label">Z-Min</div><div class="stat-value">${d.z_min?.toFixed(3) ?? '—'}</div></div>
+      <div class="stat-box"><div class="stat-label">Correlation</div><div class="stat-value">${d.correlation?.toFixed(3) ?? '—'}</div></div>
+      <div class="stat-box"><div class="stat-label">Half-Life</div><div class="stat-value">${d.half_life?.toFixed(1) ?? '—'}d</div></div>
+      <div class="stat-box"><div class="stat-label">Signal</div><div><span class="signal-badge ${sigCls}" style="font-size:0.68rem;padding:3px 8px">${signal}</span></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">${t1} / ${t2} — Ratio Z-Score History</div>
+      <div class="chart-box" id="chartZPair" style="height:250px"></div>
+    </div>`;
+
+  if (dates.length) {
+    Plotly.newPlot('chartZPair', [
+      { type:'scatter', x:dates, y:zs, mode:'lines', line:{color:'#8b5cf6',width:1.5}, name:'Z-Score', fill:'tonexty', fillcolor:'rgba(139,92,246,0.06)' },
+      { type:'scatter', x:dates, y:Array(dates.length).fill(2),  mode:'lines', line:{color:'#ef4444',dash:'dot',width:1}, showlegend:false },
+      { type:'scatter', x:dates, y:Array(dates.length).fill(-2), mode:'lines', line:{color:'#10b981',dash:'dot',width:1}, showlegend:false },
+      { type:'scatter', x:dates, y:Array(dates.length).fill(0),  mode:'lines', line:{color:'#64748b',dash:'dot',width:0.7}, showlegend:false },
+    ], {
+      paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+      margin:{t:5,b:35,l:45,r:10},
+      font:{family:'DM Mono',size:9,color:'#64748b'},
+      xaxis:{gridcolor:'#1e2233',tickfont:{size:8}},
+      yaxis:{gridcolor:'#1e2233',title:{text:'Z-Score',font:{size:9}}},
+    }, {displayModeBar:false,responsive:true});
+  }
+}
+</script>
+{% endblock %}

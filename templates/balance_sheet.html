@@ -1,0 +1,452 @@
+{% extends "base.html" %}
+{% block title %}Balance Sheet Session — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.bs-layout {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+@media (max-width: 800px) { .bs-layout { grid-template-columns: 1fr; } }
+
+.bs-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 1.2rem 1.4rem;
+}
+.bs-panel-title {
+  font-family: var(--font-head);
+  font-size: 0.82rem;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bs-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+.bs-table th {
+  background: var(--bg);
+  color: var(--text-muted);
+  font-weight: 600;
+  padding: 0.35rem 0.5rem;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.68rem;
+}
+.bs-table td {
+  padding: 0.38rem 0.5rem;
+  border-bottom: 1px solid var(--border-soft);
+  color: var(--text);
+}
+.bs-table tr:last-child td { border-bottom: none; }
+.bs-table .mono { font-family: var(--font-mono); }
+.bs-table .pos  { color: var(--green); }
+.bs-table .neg  { color: var(--red); }
+
+.item-row-form {
+  display: grid;
+  grid-template-columns: 1.8fr 1fr 0.8fr 0.8fr 1fr;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  align-items: start;
+}
+.item-row-form input, .item-row-form select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.38rem 0.5rem;
+  width: 100%;
+}
+.item-row-form input::placeholder { color: var(--text-muted); }
+
+.session-banner {
+  background: var(--green-dim);
+  border: 1px solid rgba(16,185,129,.25);
+  border-radius: var(--radius);
+  padding: 0.8rem 1.1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.session-banner.empty {
+  background: var(--gold-dim);
+  border-color: rgba(245,158,11,.25);
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+@media (max-width: 700px) { .summary-grid { grid-template-columns: 1fr 1fr; } }
+
+.summary-cell {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem 0.9rem;
+}
+.summary-cell .sc-label { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 0.25rem; }
+.summary-cell .sc-value { font-size: 1rem; font-weight: 700; font-family: var(--font-mono); color: var(--text); }
+
+.del-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+  transition: color .15s;
+}
+.del-btn:hover { color: var(--red); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>📋 Active Balance Sheet</h1>
+      <p>Tüm ALM modüllerinde paylaşılan aktif bilanço oturumu</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <button class="btn btn-ghost" style="font-size:0.72rem" onclick="loadSample()">📂 Örnek Yükle</button>
+      <button class="btn btn-primary" onclick="saveSession()">💾 Oturumu Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Session status banner -->
+<div id="sessionBanner" class="session-banner {% if not summary.has_session %}empty{% endif %}">
+  {% if summary.has_session %}
+    <span>
+      🟢 <strong>{{ summary.name }}</strong> —
+      {{ summary.n_assets }} aktif, {{ summary.n_liabilities }} pasif kalemli oturum yüklü
+      <span style="color:var(--text-muted);font-size:0.7rem;margin-left:0.5rem">
+        {{ summary.saved_at[:16]|replace('T',' ') if summary.saved_at else '' }}
+      </span>
+    </span>
+  {% else %}
+    <span>🟡 Aktif oturum yok — bilanço girin veya örnek yükleyin.</span>
+  {% endif %}
+  <div style="display:flex;gap:0.5rem">
+    <button class="btn btn-ghost" style="font-size:0.68rem" onclick="loadFromSession()">↓ Yükle</button>
+    <button class="btn btn-ghost" style="font-size:0.68rem;color:var(--red)" onclick="clearSession()">🗑 Temizle</button>
+  </div>
+</div>
+
+<!-- Summary stats -->
+<div class="summary-grid" id="summaryGrid">
+  <div class="summary-cell">
+    <div class="sc-label">Toplam Aktif (M)</div>
+    <div class="sc-value" id="smTotalA">—</div>
+  </div>
+  <div class="summary-cell">
+    <div class="sc-label">Toplam Pasif (M)</div>
+    <div class="sc-value" id="smTotalL">—</div>
+  </div>
+  <div class="summary-cell">
+    <div class="sc-label">Net Gap (M)</div>
+    <div class="sc-value" id="smGap">—</div>
+  </div>
+  <div class="summary-cell">
+    <div class="sc-label">Politika Faizi %</div>
+    <div class="sc-value" id="smRate">—</div>
+  </div>
+</div>
+
+<!-- Session name + key params -->
+<div style="display:flex;gap:0.75rem;margin-bottom:1rem;flex-wrap:wrap;align-items:flex-end">
+  <div style="flex:2;min-width:200px">
+    <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:0.3rem">Oturum Adı</label>
+    <input id="sessionName" type="text" value="{{ summary.name or 'Active Balance Sheet' }}"
+           style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+                  color:var(--text);font-family:var(--font-mono);font-size:0.78rem;padding:0.4rem 0.6rem;width:100%"/>
+  </div>
+  <div style="flex:1;min-width:130px">
+    <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:0.3rem">Baz Faiz %</label>
+    <input id="baseRate" type="number" step="0.1" value="{{ summary.base_rate or 46.0 }}"
+           style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+                  color:var(--text);font-family:var(--font-mono);font-size:0.78rem;padding:0.4rem 0.6rem;width:100%"/>
+  </div>
+  <div style="flex:1;min-width:130px">
+    <label style="font-size:0.7rem;color:var(--text-muted);display:block;margin-bottom:0.3rem">Tier-1 Sermaye (M)</label>
+    <input id="tier1" type="number" step="10" value="{{ summary.tier1_capital or 1500 }}"
+           style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);
+                  color:var(--text);font-family:var(--font-mono);font-size:0.78rem;padding:0.4rem 0.6rem;width:100%"/>
+  </div>
+</div>
+
+<!-- Assets / Liabilities tables -->
+<div class="bs-layout">
+
+  <!-- ── ASSETS ── -->
+  <div class="bs-panel">
+    <div class="bs-panel-title">
+      <span>Aktifler <span id="assetCount" style="color:var(--text-muted);font-size:0.7rem"></span></span>
+      <button class="btn btn-ghost" style="font-size:0.68rem" onclick="addItem('asset')">+ Ekle</button>
+    </div>
+    <div id="assetRows"></div>
+    <table class="bs-table" id="assetTable" style="margin-top:0.5rem">
+      <thead>
+        <tr>
+          <th>İsim</th><th>Tutar (M)</th><th>Faiz %</th><th>Yenif. (ay)</th><th>Tür</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="assetBody"></tbody>
+    </table>
+  </div>
+
+  <!-- ── LIABILITIES ── -->
+  <div class="bs-panel">
+    <div class="bs-panel-title">
+      <span>Pasifler <span id="liabCount" style="color:var(--text-muted);font-size:0.7rem"></span></span>
+      <button class="btn btn-ghost" style="font-size:0.68rem" onclick="addItem('liability')">+ Ekle</button>
+    </div>
+    <div id="liabRows"></div>
+    <table class="bs-table" id="liabTable" style="margin-top:0.5rem">
+      <thead>
+        <tr>
+          <th>İsim</th><th>Tutar (M)</th><th>Faiz %</th><th>Yenif. (ay)</th><th>Tür</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="liabBody"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- Quick nav to modules -->
+<div style="margin-top:1.5rem;padding:1rem 1.25rem;background:var(--panel);border:1px solid var(--border);border-radius:var(--radius)">
+  <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase">
+    Bu Oturumu Kullanan Modüller
+  </div>
+  <div style="display:flex;gap:0.6rem;flex-wrap:wrap">
+    <a class="btn btn-ghost" href="/nii-sensitivity" style="font-size:0.72rem">📊 NII Sensitivity</a>
+    <a class="btn btn-ghost" href="/eve-duration-gap" style="font-size:0.72rem">⚡ EVE / Duration Gap</a>
+    <a class="btn btn-ghost" href="/ftp-curve" style="font-size:0.72rem">📈 FTP Curve</a>
+    <a class="btn btn-ghost" href="/monte-carlo" style="font-size:0.72rem">🎲 Monte Carlo</a>
+    <a class="btn btn-ghost" href="/morning-brief" style="font-size:0.72rem">🌅 Morning Brief</a>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ─────────────────────────────────────────────────────────────────────
+let assets      = [];
+let liabilities = [];
+
+// ── Render table ─────────────────────────────────────────────────────────────
+function renderTable(items, bodyId, side) {
+  const tbody = document.getElementById(bodyId);
+  if (!tbody) return;
+  const typeLabel = { fixed: 'Sabit', floating: 'Değişken' };
+  tbody.innerHTML = items.map((it, i) => `
+    <tr>
+      <td>${it.name || '—'}</td>
+      <td class="mono">${(+it.amount).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:0})}</td>
+      <td class="mono">${(+it.rate).toFixed(2)}%</td>
+      <td class="mono">${it.repricing_months || it.maturity_years || '—'}</td>
+      <td>${typeLabel[it.type] || it.type}</td>
+      <td><button class="del-btn" onclick="removeItem('${side}',${i})">✕</button></td>
+    </tr>`
+  ).join('');
+  document.getElementById(side === 'asset' ? 'assetCount' : 'liabCount').textContent =
+    `(${items.length})`;
+}
+
+function renderAll() {
+  renderTable(assets,      'assetBody', 'asset');
+  renderTable(liabilities, 'liabBody',  'liability');
+  updateSummary();
+}
+
+// ── Summary bar ───────────────────────────────────────────────────────────────
+function updateSummary() {
+  const ta = assets.reduce((s,a) => s + (+a.amount||0), 0);
+  const tl = liabilities.reduce((s,l) => s + (+l.amount||0), 0);
+  const gap = ta - tl;
+  document.getElementById('smTotalA').textContent = ta.toLocaleString(undefined,{maximumFractionDigits:0});
+  document.getElementById('smTotalL').textContent = tl.toLocaleString(undefined,{maximumFractionDigits:0});
+  const gapEl = document.getElementById('smGap');
+  gapEl.textContent = (gap >= 0 ? '+' : '') + gap.toLocaleString(undefined,{maximumFractionDigits:0});
+  gapEl.className = 'sc-value ' + (gap >= 0 ? 'pos' : 'neg');
+  document.getElementById('smRate').textContent = parseFloat(document.getElementById('baseRate').value || 46).toFixed(1) + '%';
+}
+
+// ── Add item form ─────────────────────────────────────────────────────────────
+function addItem(side) {
+  const containerId = side === 'asset' ? 'assetRows' : 'liabRows';
+  const formId = `${side}Form`;
+  if (document.getElementById(formId)) return; // already open
+  const container = document.getElementById(containerId);
+  const form = document.createElement('div');
+  form.id = formId;
+  form.className = 'item-row-form';
+  form.innerHTML = `
+    <input id="${side}FName"  placeholder="İsim (örn. Sabit Kredi)" style="grid-column:span 2"/>
+    <input id="${side}FAmt"   type="number" placeholder="Tutar (M)" step="10"/>
+    <input id="${side}FRate"  type="number" placeholder="Faiz %" step="0.1"/>
+    <input id="${side}FRp"    type="number" placeholder="Yenif. ay" step="1"/>
+    <input id="${side}FMat"   type="number" placeholder="Vade (yıl)" step="0.5"/>
+    <select id="${side}FType">
+      <option value="fixed">Sabit</option>
+      <option value="floating">Değişken</option>
+    </select>
+    <div style="grid-column:span 1;display:flex;gap:0.3rem">
+      <button class="btn btn-primary" style="font-size:0.68rem;flex:1" onclick="commitItem('${side}')">Ekle</button>
+      <button class="btn btn-ghost"   style="font-size:0.68rem" onclick="cancelItem('${side}')">✕</button>
+    </div>`;
+  container.prepend(form);
+  document.getElementById(`${side}FName`).focus();
+}
+
+function commitItem(side) {
+  const name  = document.getElementById(`${side}FName`).value.trim();
+  const amt   = parseFloat(document.getElementById(`${side}FAmt`).value);
+  const rate  = parseFloat(document.getElementById(`${side}FRate`).value);
+  const rp    = parseInt(document.getElementById(`${side}FRp`).value)   || 12;
+  const mat   = parseFloat(document.getElementById(`${side}FMat`).value) || 1.0;
+  const type  = document.getElementById(`${side}FType`).value;
+  if (!name || isNaN(amt) || isNaN(rate)) { alert('İsim, tutar ve faiz zorunlu.'); return; }
+  const item = { name, amount: amt, rate, repricing_months: rp, maturity_years: mat,
+                 coupon_freq: 2, type };
+  if (side === 'asset') assets.push(item);
+  else liabilities.push(item);
+  cancelItem(side);
+  renderAll();
+}
+
+function cancelItem(side) {
+  const el = document.getElementById(`${side}Form`);
+  if (el) el.remove();
+}
+
+function removeItem(side, idx) {
+  if (side === 'asset') assets.splice(idx, 1);
+  else liabilities.splice(idx, 1);
+  renderAll();
+}
+
+// ── Session persistence ───────────────────────────────────────────────────────
+async function saveSession() {
+  const payload = {
+    name:          document.getElementById('sessionName').value.trim() || 'Active Balance Sheet',
+    base_rate:     parseFloat(document.getElementById('baseRate').value),
+    tier1_capital: parseFloat(document.getElementById('tier1').value),
+    assets, liabilities
+  };
+  try {
+    const r = await fetch('/api/session/balance-sheet', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (!d.ok) throw new Error(d.error || 'Kaydetme hatası');
+    showToast('Oturum kaydedildi ✓', true);
+    updateBanner(true, payload.name, assets.length, liabilities.length);
+  } catch(e) {
+    showToast('Hata: ' + e.message, false);
+  }
+}
+
+async function loadFromSession() {
+  try {
+    const r = await fetch('/api/session/balance-sheet');
+    const d = await r.json();
+    if (!d.has_session) { showToast('Kayıtlı oturum yok', false); return; }
+    assets      = d.assets      || [];
+    liabilities = d.liabilities || [];
+    document.getElementById('sessionName').value = d.name || '';
+    document.getElementById('baseRate').value    = d.base_rate || 46;
+    document.getElementById('tier1').value       = d.tier1_capital || 1500;
+    renderAll();
+    showToast('Oturum yüklendi ✓', true);
+  } catch(e) {
+    showToast('Yükleme hatası: ' + e.message, false);
+  }
+}
+
+async function clearSession() {
+  if (!confirm('Aktif oturumu silmek istiyor musunuz?')) return;
+  await fetch('/api/session/balance-sheet', { method: 'DELETE' });
+  showToast('Oturum temizlendi', true);
+  updateBanner(false);
+}
+
+async function loadSample() {
+  try {
+    const r = await fetch('/api/session/sample');
+    const d = await r.json();
+    assets      = d.assets      || [];
+    liabilities = d.liabilities || [];
+    document.getElementById('sessionName').value = d.name || 'Sample Balance Sheet';
+    document.getElementById('baseRate').value    = d.base_rate || 46;
+    document.getElementById('tier1').value       = d.tier1_capital || 1500;
+    renderAll();
+    showToast('Örnek bilanço yüklendi', true);
+  } catch(e) {
+    showToast('Hata: ' + e.message, false);
+  }
+}
+
+// ── Banner helper ─────────────────────────────────────────���───────────────────
+function updateBanner(has, name='', nA=0, nL=0) {
+  const banner = document.getElementById('sessionBanner');
+  if (has) {
+    banner.classList.remove('empty');
+    banner.innerHTML = `
+      <span>🟢 <strong>${name}</strong> — ${nA} aktif, ${nL} pasif kalemli oturum yüklü</span>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-ghost" style="font-size:0.68rem" onclick="loadFromSession()">↓ Yükle</button>
+        <button class="btn btn-ghost" style="font-size:0.68rem;color:var(--red)" onclick="clearSession()">🗑 Temizle</button>
+      </div>`;
+  } else {
+    banner.classList.add('empty');
+    banner.innerHTML = `
+      <span>🟡 Aktif oturum yok — bilanço girin veya örnek yükleyin.</span>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-ghost" style="font-size:0.68rem" onclick="loadFromSession()">↓ Yükle</button>
+        <button class="btn btn-ghost" style="font-size:0.68rem;color:var(--red)" onclick="clearSession()">🗑 Temizle</button>
+      </div>`;
+  }
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, ok=true) {
+  const el = document.createElement('div');
+  el.textContent = msg;
+  el.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;
+    background:${ok?'var(--green-dim)':'var(--red-dim)'};
+    color:${ok?'var(--green)':'var(--red)'};
+    border:1px solid ${ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};
+    border-radius:var(--radius);padding:.55rem 1rem;font-size:.78rem;
+    font-family:var(--font-mono);box-shadow:0 4px 20px rgba(0,0,0,.4);`;
+  document.body.appendChild(el);
+  setTimeout(()=>{ el.style.opacity='0'; el.style.transition='opacity .3s';
+    setTimeout(()=>el.remove(), 400); }, 2800);
+}
+
+// ── Init: try to load existing session ────────────────────────────────────────
+(async function init() {
+  await loadFromSession();
+})().catch(() => renderAll());
+</script>
+{% endblock %}

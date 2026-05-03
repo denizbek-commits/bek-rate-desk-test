@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+{% block title %}Senaryo Karşılaştırma — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; margin-bottom:1rem; }
+.sc-panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:1.1rem; }
+.sc-panel.a { border-top:3px solid var(--accent); }
+.sc-panel.b { border-top:3px solid var(--green); }
+.sc-label { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.08em; margin-bottom:0.5rem; }
+.a .sc-label { color:var(--accent); }
+.b .sc-label { color:var(--green); }
+.add-form { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.add-form .full { grid-column:span 2; }
+.cmp-table { width:100%; border-collapse:collapse; font-size:0.71rem; }
+.cmp-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.cmp-table td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.cmp-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.diff-pos { color:var(--green); font-weight:500; }
+.diff-neg { color:var(--red);   font-weight:500; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+.item-row { display:grid; grid-template-columns:1fr 60px 60px 70px 60px 22px; gap:0.3rem; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.28rem 0.5rem; font-size:0.63rem; margin-bottom:0.25rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Senaryo Karşılaştırma</h1>
+      <p>İki bilanço senaryosunu yan yana — Base vs Hedged, Bugün vs Geçen Hafta, Mevcut vs Stres</p>
+    </div>
+    <button class="btn btn-primary" onclick="runCompare()">▶ Karşılaştır</button>
+  </div>
+</div>
+
+<div class="compare-grid">
+  <!-- SENARYO A -->
+  <div class="sc-panel a">
+    <div class="sc-label">🔵 Senaryo A</div>
+    <div class="form-group"><label class="form-label">Etiket</label><input class="form-input" id="labelA" value="Base Case (Mevcut)"/></div>
+    <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
+      <button class="btn btn-ghost" style="font-size:0.65rem;flex:1" onclick="loadFromLib('A')">📂 Kütüphaneden</button>
+      <button class="btn btn-ghost" style="font-size:0.65rem;flex:1" onclick="loadSampleA()">Sample</button>
+    </div>
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.3rem">Varlıklar</div>
+    <div id="listA-assets" style="max-height:140px;overflow-y:auto;margin-bottom:0.4rem"></div>
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.3rem">Yükümlülükler</div>
+    <div id="listA-liabs"  style="max-height:140px;overflow-y:auto;margin-bottom:0.4rem"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Base Rate (%)</label><input class="form-input" id="baseA" type="number" value="42.5" step="0.25"/></div>
+  </div>
+
+  <!-- SENARYO B -->
+  <div class="sc-panel b">
+    <div class="sc-label">🟢 Senaryo B</div>
+    <div class="form-group"><label class="form-label">Etiket</label><input class="form-input" id="labelB" value="Hedged (IRS Sonrası)"/></div>
+    <div style="display:flex;gap:0.4rem;margin-bottom:0.5rem">
+      <button class="btn btn-ghost" style="font-size:0.65rem;flex:1" onclick="loadFromLib('B')">📂 Kütüphaneden</button>
+      <button class="btn btn-ghost" style="font-size:0.65rem;flex:1" onclick="loadSampleB()">Sample</button>
+    </div>
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.3rem">Varlıklar</div>
+    <div id="listB-assets" style="max-height:140px;overflow-y:auto;margin-bottom:0.4rem"></div>
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.3rem">Yükümlülükler</div>
+    <div id="listB-liabs"  style="max-height:140px;overflow-y:auto;margin-bottom:0.4rem"></div>
+    <div class="form-group" style="margin:0"><label class="form-label">Base Rate (%)</label><input class="form-input" id="baseB" type="number" value="42.5" step="0.25"/></div>
+  </div>
+</div>
+
+<div id="compareResults">
+  <div class="coming-soon"><div class="coming-soon-icon">⚖️</div><h2>Senaryo Karşılaştırma</h2>
+  <p>Her iki senaryo için varlık/yükümlülük verisi girin veya kütüphaneden yükleyin, ardından Karşılaştır butonuna tıklayın.</p></div>
+</div>
+
+<!-- Scenario picker modal -->
+<div id="libModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:500px;max-height:80vh;overflow-y:auto">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0">Senaryo Seç</div>
+      <button class="btn btn-ghost" onclick="closeLibModal()">✕</button>
+    </div>
+    <div id="libList"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let scenA = null, scenB = null;
+let libTarget = 'A';
+
+const SCENARIOS_BASE = {
+  assets: [
+    {name:'Floating Rate Loans',amount:2000,rate:47.5,repricing_months:1,type:'floating'},
+    {name:'Fixed Corporate Loans',amount:1200,rate:44.0,repricing_months:12,type:'fixed'},
+    {name:'Gov Bond Portfolio',amount:900,rate:38.5,repricing_months:36,type:'fixed'},
+    {name:'TLREF Loans',amount:500,rate:46.0,repricing_months:1,type:'floating'},
+    {name:'Mortgages',amount:300,rate:35.0,repricing_months:60,type:'fixed'},
+  ],
+  liabilities: [
+    {name:'Demand Deposits',amount:1500,rate:15.0,repricing_months:1,type:'floating'},
+    {name:'Time Deposits 3M',amount:1900,rate:42.0,repricing_months:3,type:'fixed'},
+    {name:'Time Deposits 6M',amount:600,rate:40.0,repricing_months:6,type:'fixed'},
+    {name:'Wholesale Funding',amount:400,rate:44.0,repricing_months:12,type:'fixed'},
+    {name:'Subordinated Debt',amount:200,rate:50.0,repricing_months:60,type:'fixed'},
+  ],
+};
+const SCENARIOS_HEDGED = {
+  assets: [
+    ...SCENARIOS_BASE.assets,
+    {name:'IRS (receive-fixed 3Y)',amount:500,rate:44.5,repricing_months:36,type:'fixed'},
+  ],
+  liabilities: [
+    ...SCENARIOS_BASE.liabilities,
+    {name:'IRS (pay-floating)',amount:500,rate:47.0,repricing_months:1,type:'floating'},
+  ],
+};
+
+function loadSampleA() {
+  scenA = {assets: SCENARIOS_BASE.assets, liabilities: SCENARIOS_BASE.liabilities, base_rate:42.5};
+  renderScenPanel('A', scenA);
+}
+function loadSampleB() {
+  scenB = {assets: SCENARIOS_HEDGED.assets, liabilities: SCENARIOS_HEDGED.liabilities, base_rate:42.5};
+  renderScenPanel('B', scenB);
+}
+
+function renderScenPanel(which, sc) {
+  ['assets','liabilities'].forEach(side => {
+    const el = document.getElementById(`list${which}-${side}`);
+    el.innerHTML = (sc[side]||[]).map(r =>
+      `<div style="display:grid;grid-template-columns:1fr 55px 55px;gap:0.3rem;padding:0.2rem 0;border-bottom:1px solid var(--border-soft);font-size:0.63rem">
+        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-dim)">${r.name}</span>
+        <span style="text-align:right;color:var(--text-muted)">${r.amount}M</span>
+        <span style="text-align:right;color:${r.type==='floating'?'var(--accent)':'var(--text-muted)'}">${r.rate}%</span>
+      </div>`
+    ).join('');
+  });
+}
+
+async function loadFromLib(which) {
+  libTarget = which;
+  document.getElementById('libModal').style.display = 'flex';
+  document.getElementById('libList').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    const resp = await fetch('/api/scenarios');
+    const list = await resp.json();
+    document.getElementById('libList').innerHTML = list.map(s => `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.6rem 0.8rem;margin-bottom:0.4rem;cursor:pointer"
+           onclick="pickLibScen('${s.id}')">
+        <div style="font-size:0.75rem;font-weight:500;color:var(--text)">${s.name}</div>
+        <div style="font-size:0.65rem;color:var(--text-muted)">${s.description}</div>
+      </div>`).join('');
+  } catch(err) {}
+}
+
+async function pickLibScen(id) {
+  closeLibModal();
+  const resp = await fetch(`/api/scenarios/${id}`);
+  const sc   = await resp.json();
+  const data = {
+    assets:      sc.data?.assets||[],
+    liabilities: sc.data?.liabilities||[],
+    base_rate:   sc.data?.base_rate||42.5,
+  };
+  if (libTarget === 'A') {
+    scenA = data;
+    document.getElementById('labelA').value = sc.name;
+    document.getElementById('baseA').value  = data.base_rate;
+    renderScenPanel('A', data);
+  } else {
+    scenB = data;
+    document.getElementById('labelB').value = sc.name;
+    document.getElementById('baseB').value  = data.base_rate;
+    renderScenPanel('B', data);
+  }
+}
+
+function closeLibModal() { document.getElementById('libModal').style.display = 'none'; }
+document.getElementById('libModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeLibModal();
+});
+
+async function runCompare() {
+  if (!scenA && !scenB) { loadSampleA(); loadSampleB(); }
+  if (!scenA || !scenB) { alert('Her iki senaryo da gerekli.'); return; }
+
+  // Merge base_rate from inputs
+  scenA.base_rate = parseFloat(document.getElementById('baseA').value) || 42.5;
+  scenB.base_rate = parseFloat(document.getElementById('baseB').value) || 42.5;
+  scenA.horizon_months = scenB.horizon_months = 12;
+  scenA.turkish_context = scenB.turkish_context = true;
+
+  document.getElementById('compareResults').innerHTML =
+    '<div class="loading" style="padding:2rem"><div class="spinner"></div> Karşılaştırılıyor...</div>';
+  try {
+    const resp = await fetch('/api/compare', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        scenario_a: scenA, scenario_b: scenB,
+        label_a: document.getElementById('labelA').value,
+        label_b: document.getElementById('labelB').value,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderCompare(d);
+  } catch(err) {
+    document.getElementById('compareResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderCompare(d) {
+  const lA = d.label_a, lB = d.label_b;
+  const sm = d.summary;
+
+  // Summary strip
+  const summaryHTML = `
+    <div class="kpi-strip mb-2">
+      <div class="stat-box">
+        <div class="stat-label">Base NII</div>
+        <div style="display:flex;gap:0.5rem;align-items:baseline">
+          <span style="color:var(--accent);font-family:var(--font-mono);font-size:1.1rem">${sm.base_nii.a.toFixed(1)}M</span>
+          <span style="color:var(--text-muted);font-size:0.65rem">→</span>
+          <span style="color:var(--green);font-family:var(--font-mono);font-size:1.1rem">${sm.base_nii.b.toFixed(1)}M</span>
+        </div>
+        <div class="stat-sub" style="color:${sm.base_nii.diff>=0?'var(--green)':'var(--red)'}">${sm.base_nii.diff>=0?'+':''}${sm.base_nii.diff.toFixed(1)}M fark</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">NII-at-Risk</div>
+        <div style="display:flex;gap:0.5rem;align-items:baseline">
+          <span style="color:var(--red);font-family:var(--font-mono);font-size:1.1rem">${sm.nii_at_risk.a.toFixed(1)}M</span>
+          <span style="color:var(--text-muted);font-size:0.65rem">→</span>
+          <span style="color:${sm.nii_at_risk.b>sm.nii_at_risk.a?'var(--green)':'var(--red)'};font-family:var(--font-mono);font-size:1.1rem">${sm.nii_at_risk.b.toFixed(1)}M</span>
+        </div>
+        <div class="stat-sub" style="color:${sm.nii_at_risk.diff>=0?'var(--green)':'var(--red)'}">${sm.nii_at_risk.diff>=0?'+':''}${sm.nii_at_risk.diff.toFixed(1)}M fark</div>
+      </div>
+      <div class="stat-box"><div class="stat-label">🔵 ${lA} Toplam Aktif</div><div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--accent)">${sm.total_assets.a.toFixed(0)}M</div></div>
+      <div class="stat-box"><div class="stat-label">🟢 ${lB} Toplam Aktif</div><div style="font-family:var(--font-mono);font-size:1.1rem;color:var(--green)">${sm.total_assets.b.toFixed(0)}M</div></div>
+    </div>`;
+
+  // NII scenario table
+  const niiRows = d.nii_compare.map(r => {
+    const betterB = r.b_nii >= r.a_nii;
+    const diffCls = betterB ? 'diff-pos' : 'diff-neg';
+    return `<tr>
+      <td style="font-weight:500">${r.scenario}</td>
+      <td class="r" style="color:var(--accent)">${r.a_nii.toFixed(1)}M</td>
+      <td class="r" style="color:${r.a_delta>=0?'var(--green)':'var(--red)'}">${r.a_delta>=0?'+':''}${r.a_delta.toFixed(1)}M</td>
+      <td class="r" style="color:var(--green)">${r.b_nii.toFixed(1)}M</td>
+      <td class="r" style="color:${r.b_delta>=0?'var(--green)':'var(--red)'}">${r.b_delta>=0?'+':''}${r.b_delta.toFixed(1)}M</td>
+      <td class="r ${diffCls}">${r.diff_nii>=0?'+':''}${r.diff_nii.toFixed(1)}M</td>
+    </tr>`;
+  }).join('');
+
+  // Gap table
+  const gapRows = d.gap_compare.map(r => {
+    const diffCls = r.diff >= 0 ? 'diff-pos' : 'diff-neg';
+    return `<tr>
+      <td style="font-weight:500">${r.bucket}</td>
+      <td class="r" style="color:${r.a_gap>=0?'var(--green)':'var(--red)'}">${r.a_gap>=0?'+':''}${r.a_gap.toFixed(0)}M</td>
+      <td class="r" style="color:${r.a_cum>=0?'var(--green)':'var(--red)'}">${r.a_cum>=0?'+':''}${r.a_cum.toFixed(0)}M</td>
+      <td class="r" style="color:${r.b_gap>=0?'var(--green)':'var(--red)'}">${r.b_gap>=0?'+':''}${r.b_gap.toFixed(0)}M</td>
+      <td class="r" style="color:${r.b_cum>=0?'var(--green)':'var(--red)'}">${r.b_cum>=0?'+':''}${r.b_cum.toFixed(0)}M</td>
+      <td class="r ${diffCls}">${r.diff>=0?'+':''}${r.diff.toFixed(0)}M</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('compareResults').innerHTML = `
+    ${summaryHTML}
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">NII Karşılaştırma — Senaryo Bazında</div>
+        <table class="cmp-table">
+          <thead><tr>
+            <th>Senaryo</th>
+            <th class="r" style="color:var(--accent)">A NII</th><th class="r" style="color:var(--accent)">A ΔNII</th>
+            <th class="r" style="color:var(--green)">B NII</th><th class="r" style="color:var(--green)">B ΔNII</th>
+            <th class="r">Fark (B−A)</th>
+          </tr></thead>
+          <tbody>${niiRows}</tbody>
+        </table>
+      </div>
+      <div class="card">
+        <div class="card-title">Repricing Gap Karşılaştırma</div>
+        <table class="cmp-table">
+          <thead><tr>
+            <th>Bucket</th>
+            <th class="r" style="color:var(--accent)">A Gap</th><th class="r" style="color:var(--accent)">A Kümül.</th>
+            <th class="r" style="color:var(--green)">B Gap</th><th class="r" style="color:var(--green)">B Kümül.</th>
+            <th class="r">Fark</th>
+          </tr></thead>
+          <tbody>${gapRows}</tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">NII Karşılaştırma Grafiği</div>
+      <div class="chart-box" id="chartCompare" style="height:240px"></div>
+    </div>`;
+
+  // Chart
+  const scenarios  = d.nii_compare.map(r=>r.scenario);
+  const niisA      = d.nii_compare.map(r=>r.a_nii);
+  const niisB      = d.nii_compare.map(r=>r.b_nii);
+  Plotly.newPlot('chartCompare',[
+    { type:'bar', x:scenarios, y:niisA, name:lA, marker:{color:'rgba(37,99,235,0.7)'} },
+    { type:'bar', x:scenarios, y:niisB, name:lB, marker:{color:'rgba(16,185,129,0.7)'} },
+  ],{
+    barmode:'group', paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:80,l:55,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233',tickangle:-25,tickfont:{size:8}},
+    yaxis:{gridcolor:'#1e2233',title:{text:'NII (M)',font:{size:9}}},
+    legend:{font:{size:9},bgcolor:'transparent'},
+  },{displayModeBar:false,responsive:true});
+}
+</script>
+{% endblock %}

@@ -1,0 +1,410 @@
+{% extends "base.html" %}
+
+{% block title %}Carry Ticaret P&L Tahminleyici — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+  .input-group {
+    margin-bottom: 1rem;
+  }
+
+  .input-group label {
+    display: block;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .input-group input,
+  .input-group select {
+    width: 100%;
+    padding: 0.5rem 0.6rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: var(--radius);
+    font-family: var(--font-mono);
+    font-size: 0.85rem;
+  }
+
+  .input-group input:focus,
+  .input-group select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(37, 99, 235, 0.2);
+  }
+
+  .grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .kpi-box {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 0.9rem;
+    text-align: center;
+    margin-bottom: 0.75rem;
+  }
+
+  .kpi-box .kpi-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.3rem;
+  }
+
+  .kpi-box .kpi-value {
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--gold);
+  }
+
+  .metric-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 0.8rem;
+  }
+
+  .metric-row .label {
+    color: var(--text-muted);
+  }
+
+  .metric-row .value {
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .progress-bar {
+    width: 100%;
+    height: 8px;
+    background: var(--surface);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 0.5rem;
+    border: 1px solid var(--border);
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--accent), var(--gold), var(--red));
+    transition: width 0.3s;
+  }
+
+  .scen-table {
+    width: 100%;
+    font-size: 0.75rem;
+    border-collapse: collapse;
+  }
+
+  .scen-table thead tr {
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .scen-table td,
+  .scen-table th {
+    padding: 0.5rem 0.6rem;
+    text-align: right;
+  }
+
+  .scen-table th {
+    text-align: right;
+    color: var(--text-muted);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+  }
+
+  .scen-table tbody tr {
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .scen-table tbody tr:nth-child(11) {
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.3);
+  }
+
+  .scen-table tbody tr.profitable {
+    background: rgba(16, 185, 129, 0.08);
+  }
+
+  .scen-table tbody tr.loss {
+    background: rgba(239, 68, 68, 0.08);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>💹 Carry Ticaret P&L Tahminleyici</h1>
+  <p>TRY carry pozisyonu için P&L tahmini · başa baş kur değer kaybı · senaryo matrisi</p>
+</div>
+
+<div class="grid-2">
+  <div class="card">
+    <div class="card-header">Pozisyon Parametreleri</div>
+
+    <div class="input-group">
+      <label>Fonlama Para Birimi</label>
+      <select id="inpCcy">
+        <option value="USD" selected>USD</option>
+        <option value="EUR">EUR</option>
+      </select>
+    </div>
+
+    <div class="input-group">
+      <label>Fonlama Faizi (%)</label>
+      <input type="number" id="inpFundRate" value="4.33" step="0.01"/>
+    </div>
+
+    <div class="input-group">
+      <label>TRY Faizi (%)</label>
+      <input type="number" id="inpTRYRate" value="42.5" step="0.1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Spot Kur</label>
+      <input type="number" id="inpSpot" value="38.50" step="0.01"/>
+    </div>
+
+    <div class="input-group">
+      <label>Nominal (M USD)</label>
+      <input type="number" id="inpNotional" value="10" step="1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Elde Tutma Süresi (Gün)</label>
+      <input type="number" id="inpDays" value="90" step="1"/>
+    </div>
+
+    <div class="input-group">
+      <label>Hedge Maliyeti (bps)</label>
+      <input type="number" id="inpHedge" value="0" step="10"/>
+    </div>
+
+    <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+      <button class="btn btn-ghost" onclick="loadLiveRate()" style="flex: 1;">📡 Canlı Kur Yükle</button>
+      <button class="btn btn-primary" onclick="runCalc()" style="flex: 1;">▶ Hesapla</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Temel Metrikler</div>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem;">
+      <div class="kpi-box" style="margin-bottom: 0;">
+        <div class="kpi-label">Brüt Carry</div>
+        <div class="kpi-value" id="kpiGrossCarry">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">% yıllık</div>
+      </div>
+      <div class="kpi-box" style="margin-bottom: 0;">
+        <div class="kpi-label">Net Carry</div>
+        <div class="kpi-value" id="kpiNetCarry">—</div>
+        <div style="font-size: 0.65rem; color: var(--text-muted);">% yıllık</div>
+      </div>
+    </div>
+
+    <div class="metric-row">
+      <span class="label">Başa Baş Kur Değ.</span>
+      <span class="value" id="metricBE">—%</span>
+    </div>
+
+    <div class="metric-row">
+      <span class="label">TRY Carry</span>
+      <span class="value" id="metricCarry">— M</span>
+    </div>
+
+    <div class="metric-row">
+      <span class="label">Tarihsel Vol</span>
+      <span class="value" id="metricVol">—%</span>
+    </div>
+
+    <div class="metric-row">
+      <span class="label">Carry/Vol</span>
+      <span class="value" id="metricCVRatio">—</span>
+    </div>
+
+    <div style="margin-top: 1rem;">
+      <div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 0.3rem;">Başa Baş Yakınlığı</div>
+      <div class="progress-bar">
+        <div class="progress-fill" id="progressBar" style="width: 50%;"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Senaryo Matrisi</div>
+  <div style="overflow-x: auto;">
+    <table id="scenTable" class="scen-table">
+      <thead>
+        <tr>
+          <th>Kur Değişimi (%)</th>
+          <th>Bitiş Kuru</th>
+          <th>P&L (M USD)</th>
+          <th>Yıllıklaştırılmış (%)</th>
+          <th>Durum</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="5" style="text-align: center; padding: 1rem; color: var(--text-muted);">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">P&L Grafiği</div>
+  <div id="chartCarryTrade" style="height: 300px;"></div>
+</div>
+
+<script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+<script>
+function loadLiveRate() {
+  const ccy = document.getElementById('inpCcy').value || 'USD';
+  const pair = `${ccy}TRY=X`;
+
+  fetch(`https://query1.finance.yahoo.com/v7/finance/download/${pair}?interval=1d&events=history`)
+    .then(response => response.text())
+    .then(data => {
+      const lines = data.split('\n');
+      if (lines.length > 1) {
+        const lastLine = lines[lines.length - 2];
+        const parts = lastLine.split(',');
+        if (parts.length >= 4) {
+          const close = parseFloat(parts[4]);
+          if (!isNaN(close)) {
+            document.getElementById('inpSpot').value = close.toFixed(4);
+            console.log(`Live rate ${pair}: ${close}`);
+          }
+        }
+      }
+    })
+    .catch(e => {
+      console.log('Could not fetch live rate, using default');
+    });
+}
+
+function runCalc() {
+  const ccy = document.getElementById('inpCcy').value || 'USD';
+  const fundRate = parseFloat(document.getElementById('inpFundRate').value) || 4.33;
+  const tryRate = parseFloat(document.getElementById('inpTRYRate').value) || 42.5;
+  const spot = parseFloat(document.getElementById('inpSpot').value) || 38.5;
+  const notional = parseFloat(document.getElementById('inpNotional').value) || 10;
+  const days = parseInt(document.getElementById('inpDays').value) || 90;
+  const hedge = parseFloat(document.getElementById('inpHedge').value) || 0;
+
+  fetch('/api/carry-trade/calculate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      funding_currency: ccy,
+      funding_rate_pct: fundRate,
+      try_yield_pct: tryRate,
+      spot_rate: spot,
+      notional_usd: notional,
+      holding_days: days,
+      hedge_cost_bps: hedge,
+    }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      renderResults(data);
+    })
+    .catch(e => console.error('Calc error:', e));
+}
+
+function renderResults(data) {
+  document.getElementById('kpiGrossCarry').textContent = (data.gross_carry_ann_pct || 0).toFixed(2);
+  document.getElementById('kpiNetCarry').textContent = (data.net_carry_ann_pct || 0).toFixed(2);
+  document.getElementById('metricBE').textContent = (data.break_even_depr_pct || 0).toFixed(2) + '%';
+  document.getElementById('metricCarry').textContent = (data.carry_try_m || 0).toFixed(2) + ' M';
+  document.getElementById('metricVol').textContent = (data.hist_vol_ann_pct || 0).toFixed(2) + '%';
+  document.getElementById('metricCVRatio').textContent = (data.carry_to_vol_ratio || 0).toFixed(2);
+
+  const beDepr = Math.abs(data.break_even_depr_pct || 0);
+  const maxDepr = 50;
+  const progressPct = Math.min((beDepr / maxDepr) * 100, 100);
+  document.getElementById('progressBar').style.width = progressPct + '%';
+
+  renderScenTable(data.scenarios);
+  renderChart(data.scenarios);
+}
+
+function renderScenTable(scenarios) {
+  const tbody = document.querySelector('#scenTable tbody');
+  tbody.innerHTML = '';
+
+  scenarios.forEach((scen, idx) => {
+    const tr = document.createElement('tr');
+    if (idx === 5) {
+      tr.className = '';
+    } else if (scen.profitable) {
+      tr.className = 'profitable';
+    } else {
+      tr.className = 'loss';
+    }
+
+    tr.innerHTML = `
+      <td>${scen.fx_change_pct >= 0 ? '+' : ''}${scen.fx_change_pct.toFixed(0)}</td>
+      <td>${scen.spot_end.toFixed(4)}</td>
+      <td style="font-weight: 600; color: ${scen.pnl_usd_m >= 0 ? 'var(--green)' : 'var(--red)'};">${scen.pnl_usd_m.toFixed(3)}</td>
+      <td>${(scen.annualized_pct || 0).toFixed(2)}</td>
+      <td>${scen.profitable ? '✓ Kâr' : '✗ Zarar'}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderChart(scenarios) {
+  const fxChanges = scenarios.map(s => s.fx_change_pct);
+  const pnls = scenarios.map(s => s.pnl_usd_m);
+  const colors = pnls.map(p => p >= 0 ? 'var(--green)' : 'var(--red)');
+
+  const trace = {
+    x: fxChanges,
+    y: pnls,
+    type: 'scatter',
+    mode: 'lines+markers',
+    line: { color: 'var(--gold)', width: 2 },
+    marker: { size: 6, color: colors },
+    fill: 'tozeroy',
+    fillcolor: 'rgba(245, 158, 11, 0.1)',
+  };
+
+  const zeroLine = {
+    x: [Math.min(...fxChanges), Math.max(...fxChanges)],
+    y: [0, 0],
+    type: 'scatter',
+    mode: 'lines',
+    line: { color: 'rgba(100,116,139,0.5)', width: 1, dash: 'dash' },
+    showlegend: false,
+  };
+
+  const layout = {
+    plot_bgcolor: 'rgba(0,0,0,0)',
+    paper_bgcolor: 'rgba(0,0,0,0)',
+    font: { color: '#e2e8f0', family: 'DM Mono' },
+    margin: { l: 50, r: 30, t: 20, b: 40 },
+    xaxis: { title: 'FX Değişimi (%)' },
+    yaxis: { title: 'P&L (M USD)' },
+    hovermode: 'x unified',
+  };
+
+  Plotly.newPlot('chartCarryTrade', [trace, zeroLine], layout, { responsive: true });
+}
+
+window.addEventListener('load', () => {
+  loadLiveRate();
+});
+</script>
+{% endblock %}

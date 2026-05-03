@@ -1,0 +1,249 @@
+{% extends 'base.html' %}
+{% block title %}Günlük P&L Raporu — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.pnl-control-bar { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; margin-bottom:1.25rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+.pnl-hero-card { background:var(--panel); }
+.pnl-stat { background:var(--panel); }
+.pnl-control-input { width:120px; }
+.pnl-date-display { font-size:0.65rem; color:var(--text-muted); }
+
+.pnl-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.pnl-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.pnl-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); font-variant-numeric:tabular-nums; }
+.pnl-table .r { text-align:right; }
+
+.pnl-positive { color:var(--green); font-weight:600; }
+.pnl-negative { color:var(--red); font-weight:600; }
+
+.pnl-stat { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.7rem; }
+.pnl-stat-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; margin-bottom:0.25rem; }
+.pnl-stat-value { font-family:var(--font-head); font-size:1rem; font-weight:700; }
+
+.pnl-hero-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.8rem; margin-bottom:0.5rem; }
+.pnl-hero-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; }
+.pnl-hero-value { font-family:var(--font-head); font-size:1.4rem; font-weight:800; margin:0.25rem 0 0 0; }
+.pnl-hero-sub { font-size:0.65rem; color:var(--text-muted); margin-top:0.1rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Günlük P&L Raporu</h1>
+      <p>Gerçekleşmiş + gerçekleşmemiş P&L · Parite bazlı · Masa özeti</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span id="pnlLiveLabel" style="font-size:0.6rem;color:var(--text-muted)"></span>
+      <button class="btn btn-ghost" onclick="loadPnL()">⟳ Güncelle</button>
+      <button class="btn btn-ghost" onclick="pnlSample()">↺ Örnek</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONTROL BAR -->
+<div class="pnl-control-bar">
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <label style="font-size:0.65rem;color:var(--text-muted)">USD/TRY</label>
+    <input class="form-input pnl-control-input" id="pnlRateUSD" type="number" step="0.0001" placeholder="38.50"/>
+  </div>
+  <div style="display:flex;gap:0.5rem;align-items:center">
+    <label style="font-size:0.65rem;color:var(--text-muted)">EUR/TRY</label>
+    <input class="form-input pnl-control-input" id="pnlRateEUR" type="number" step="0.0001" placeholder="41.80"/>
+  </div>
+  <div style="flex:1;text-align:right;display:flex;gap:1rem;align-items:center;justify-content:flex-end">
+    <span class="pnl-date-display" id="pnlDateDisplay">Bugün</span>
+  </div>
+</div>
+
+<!-- KPI STRIP -->
+<div class="kpi-strip mb-2" id="pnlKPIStrip">
+  <div class="stat-box"><div class="stat-label">Gerçekleşmiş P&L</div><div class="stat-value" id="kpiRealized">—</div></div>
+  <div class="stat-box"><div class="stat-label">Gerçekleşmemiş P&L</div><div class="stat-value" id="kpiUnrealized">—</div></div>
+  <div class="stat-box"><div class="stat-label">Toplam P&L</div><div class="stat-value" id="kpiTotal">—</div></div>
+  <div class="stat-box"><div class="stat-label">Açık Pozisyon</div><div class="stat-value" id="kpiOpenPos">—</div></div>
+  <div class="stat-box"><div class="stat-label">Kapanan İşlem (Bugün)</div><div class="stat-value" id="kpiClosedTx">—</div></div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="grid-2 mb-2">
+  <!-- LEFT: P&L BY PAIR -->
+  <div class="card" id="pnlByPair">
+    <div class="card-title">P&L Parite Bazında</div>
+    <div class="coming-soon" style="min-height:150px">
+      <div class="coming-soon-icon">📊</div>
+      <p>Veri yükleniyor...</p>
+    </div>
+  </div>
+
+  <!-- RIGHT: WINNERS/LOSERS -->
+  <div id="pnlWinLose">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+      <div class="pnl-hero-card">
+        <div class="pnl-hero-label">Kazançlı Parite</div>
+        <div class="pnl-hero-value" style="color:var(--green)" id="pnlWinner">—</div>
+        <div class="pnl-hero-sub" id="pnlWinnerVal">—</div>
+      </div>
+      <div class="pnl-hero-card">
+        <div class="pnl-hero-label">Zararı Parite</div>
+        <div class="pnl-hero-value" style="color:var(--red)" id="pnlLoser">—</div>
+        <div class="pnl-hero-sub" id="pnlLoserVal">—</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- FULL WIDTH CHART -->
+<div class="card">
+  <div class="card-title">P&L Grafik — Parite Bazında</div>
+  <div style="min-height:300px;background:var(--surface);border-radius:var(--radius);padding:1rem;display:flex;align-items:center;justify-content:center">
+    <div id="pnlChart" style="width:100%;height:280px"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<script>
+// ── P&L DASHBOARD ────────────────────────────────────────────────────────────
+
+function setPnLDateDisplay() {
+  const today = new Date();
+  const dayName = ['Paz','Pzt','Sal','Çar','Per','Cum','Cmt'][today.getDay()];
+  const dateStr = today.toLocaleDateString('tr-TR');
+  document.getElementById('pnlDateDisplay').textContent = `${dayName}, ${dateStr}`;
+}
+setPnLDateDisplay();
+
+async function loadPnL() {
+  const usd = document.getElementById('pnlRateUSD').value;
+  const eur = document.getElementById('pnlRateEUR').value;
+  const qs = new URLSearchParams();
+  if (usd) qs.set('USDTRY', usd);
+  if (eur) qs.set('EURTRY', eur);
+
+  const lbl = document.getElementById('pnlLiveLabel');
+  if (lbl) lbl.textContent = '⏳ Yükleniyor...';
+
+  try {
+    const resp = await fetch('/api/dealer/pnl?' + qs);
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderPnL(d);
+    if (lbl) lbl.textContent = '✓ ' + (d.timestamp || new Date().toLocaleTimeString('tr-TR'));
+  } catch(err) {
+    if (lbl) lbl.textContent = '⚠️ ' + err.message;
+  }
+}
+
+function pnlSample() {
+  document.getElementById('pnlRateUSD').value = '38.50';
+  document.getElementById('pnlRateEUR').value = '41.80';
+  loadPnL();
+}
+
+function renderPnL(d) {
+  // Update KPI strip
+  const realizedColor = d.realized_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+  const unrealizedColor = d.unrealized_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+  const totalColor = d.total_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+
+  document.getElementById('kpiRealized').innerHTML =
+    `<span style="color:${realizedColor}">${d.realized_pnl_m >= 0 ? '+' : ''}${d.realized_pnl_m.toLocaleString('tr-TR')} TL</span>`;
+  document.getElementById('kpiUnrealized').innerHTML =
+    `<span style="color:${unrealizedColor}">${d.unrealized_pnl_m >= 0 ? '+' : ''}${d.unrealized_pnl_m.toLocaleString('tr-TR')} TL</span>`;
+  document.getElementById('kpiTotal').innerHTML =
+    `<span style="color:${totalColor};font-weight:700">${d.total_pnl_m >= 0 ? '+' : ''}${d.total_pnl_m.toLocaleString('tr-TR')} TL</span>`;
+  document.getElementById('kpiOpenPos').textContent = d.open_positions || 0;
+  document.getElementById('kpiClosedTx').textContent = d.closed_today_count || 0;
+
+  // Render by-pair table
+  const pairRows = (d.by_pair || []).map(p => {
+    const totalColor = p.total_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+    return `<tr>
+      <td style="font-weight:500">${p.pair}</td>
+      <td class="r"><span style="color:${p.realized_pnl_m >= 0 ? 'var(--green)' : 'var(--red)'}">${p.realized_pnl_m >= 0 ? '+' : ''}${p.realized_pnl_m.toLocaleString('tr-TR')}</span></td>
+      <td class="r"><span style="color:${p.unrealized_pnl_m >= 0 ? 'var(--green)' : 'var(--red)'}">${p.unrealized_pnl_m >= 0 ? '+' : ''}${p.unrealized_pnl_m.toLocaleString('tr-TR')}</span></td>
+      <td class="r"><span style="color:${totalColor};font-weight:600">${p.total_pnl_m >= 0 ? '+' : ''}${p.total_pnl_m.toLocaleString('tr-TR')}</span></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('pnlByPair').innerHTML = `
+    <div class="card-title">P&L Parite Bazında</div>
+    <table class="pnl-table">
+      <thead><tr><th>Parite</th><th class="r">Gerçekleşmiş</th><th class="r">Gerçekleşmemiş</th><th class="r">Toplam</th></tr></thead>
+      <tbody>${pairRows}</tbody>
+    </table>
+  `;
+
+  // Render winner/loser
+  const winner = (d.by_pair || []).reduce((a, b) => a.total_pnl_m > b.total_pnl_m ? a : b, d.by_pair?.[0] || {});
+  const loser = (d.by_pair || []).reduce((a, b) => a.total_pnl_m < b.total_pnl_m ? a : b, d.by_pair?.[0] || {});
+
+  document.getElementById('pnlWinLose').innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+      <div class="pnl-hero-card">
+        <div class="pnl-hero-label">Kazançlı Parite</div>
+        <div class="pnl-hero-value" style="color:var(--green)" id="pnlWinner">${winner.pair || '—'}</div>
+        <div class="pnl-hero-sub">${winner.total_pnl_m >= 0 ? '+' : ''}${(winner.total_pnl_m || 0).toLocaleString('tr-TR')} TL</div>
+      </div>
+      <div class="pnl-hero-card">
+        <div class="pnl-hero-label">Zararı Parite</div>
+        <div class="pnl-hero-value" style="color:var(--red)">${loser.pair || '—'}</div>
+        <div class="pnl-hero-sub">${(loser.total_pnl_m || 0) >= 0 ? '+' : ''}${(loser.total_pnl_m || 0).toLocaleString('tr-TR')} TL</div>
+      </div>
+    </div>
+  `;
+
+  // Render Plotly chart
+  renderPnLChart(d.by_pair || []);
+}
+
+function renderPnLChart(pairData) {
+  if (!pairData.length) return;
+
+  const pairs = pairData.map(p => p.pair);
+  const realized = pairData.map(p => p.realized_pnl_m);
+  const unrealized = pairData.map(p => p.unrealized_pnl_m);
+
+  const trace1 = {
+    x: pairs, y: realized,
+    name: 'Gerçekleşmiş', type: 'bar',
+    marker: {color: 'rgba(16,185,129,0.7)'}
+  };
+
+  const trace2 = {
+    x: pairs, y: unrealized,
+    name: 'Gerçekleşmemiş', type: 'bar',
+    marker: {color: 'rgba(37,99,235,0.7)'}
+  };
+
+  const layout = {
+    barmode: 'group',
+    title: '', xaxis: {title: ''}, yaxis: {title: 'P&L (TL)'},
+    plot_bgcolor: 'rgba(0,0,0,0)', paper_bgcolor: 'rgba(0,0,0,0)',
+    font: {color: 'var(--text)', family: 'var(--font-mono)'},
+    margin: {l:50, r:30, t:10, b:40},
+    showlegend: true,
+    hovermode: 'x unified'
+  };
+
+  Plotly.newPlot('pnlChart', [trace1, trace2], layout, {responsive: true, displayModeBar: false});
+}
+
+// Auto-load on page open
+setTimeout(() => {
+  loadLiveRates();
+  loadPnL();
+}, 300);
+
+async function loadLiveRates() {
+  try {
+    const resp = await fetch('/api/trading/live-rates');
+    const d = await resp.json();
+    if (d.USDTRY) document.getElementById('pnlRateUSD').value = d.USDTRY.toFixed(4);
+    if (d.EURTRY) document.getElementById('pnlRateEUR').value = d.EURTRY.toFixed(4);
+  } catch(err) {}
+}
+</script>
+{% endblock %}

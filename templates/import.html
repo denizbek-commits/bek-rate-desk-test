@@ -1,0 +1,366 @@
+{% extends 'base.html' %}
+{% block title %}Import — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.drop-zone { border:2px dashed var(--border); border-radius:var(--radius); padding:2.5rem; text-align:center; cursor:pointer; transition:all 0.2s; }
+.drop-zone:hover, .drop-zone.drag-over { border-color:var(--accent); background:var(--accent-glow); }
+.drop-zone-icon { font-size:2.5rem; margin-bottom:0.75rem; opacity:0.5; }
+.drop-zone p { font-size:0.72rem; color:var(--text-muted); }
+.import-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.import-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.import-table td { padding:0.38rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.import-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.cb-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; cursor:pointer; transition:all 0.15s; }
+.cb-card:hover, .cb-card.selected { border-color:var(--accent); background:var(--accent-glow); }
+.cb-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:0.5rem; margin-bottom:1rem; }
+.cb-name { font-size:0.75rem; font-weight:600; color:var(--text); margin-bottom:0.2rem; }
+.cb-fmt  { font-size:0.62rem; color:var(--text-muted); }
+.step-list { list-style:none; }
+.step-list li { display:flex; align-items:flex-start; gap:0.6rem; padding:0.35rem 0; font-size:0.72rem; color:var(--text-dim); border-bottom:1px solid var(--border-soft); }
+.step-num { background:var(--accent); color:#fff; border-radius:50%; width:18px; height:18px; display:flex; align-items:center; justify-content:center; font-size:0.6rem; font-weight:700; flex-shrink:0; margin-top:1px; }
+.warn-row { background:rgba(245,158,11,.07); }
+.ok-pill  { background:var(--green-dim); color:var(--green); font-size:0.58rem; padding:1px 5px; border-radius:3px; font-weight:600; }
+.err-pill { background:var(--red-dim); color:var(--red); font-size:0.58rem; padding:1px 5px; border-radius:3px; font-weight:600; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Veri Import</h1>
+      <p>Excel/CSV bilanço yükleme — core banking entegrasyonu, otomatik sütun eşleme, doğrulama</p>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <a href="/api/import/template/excel" class="btn btn-gold">⬇ Excel Şablonu</a>
+      <a href="/api/import/template/csv?side=assets" class="btn btn-ghost">⬇ CSV Şablonu</a>
+    </div>
+  </div>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-upload"   onclick="switchTab('upload')">📁 Dosya Yükle</button>
+  <button class="tab-btn"        id="tab-paste"    onclick="switchTab('paste')">📋 CSV Yapıştır</button>
+  <button class="tab-btn"        id="tab-connector"onclick="switchTab('connector')">🔌 Core Banking</button>
+</div>
+
+<!-- ══ TAB 1: UPLOAD ══ -->
+<div id="panel-upload">
+  <div class="grid-2 mb-2">
+    <div>
+      <div class="form-group" style="margin-bottom:0.75rem">
+        <label class="form-label">Hangi taraf?</label>
+        <select class="form-select" id="uploadSide">
+          <option value="assets">Varlıklar (Assets)</option>
+          <option value="liabilities">Yükümlülükler (Liabilities)</option>
+        </select>
+      </div>
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="drop-zone-icon">📂</div>
+        <p><strong style="color:var(--text)">Dosya seçin veya buraya sürükleyin</strong></p>
+        <p style="margin-top:0.3rem">Excel (.xlsx, .xls) veya CSV (.csv) — maks 10MB</p>
+        <p style="margin-top:0.5rem;font-size:0.65rem">Türkçe ve İngilizce sütun adları otomatik tanınır</p>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFile(this.files[0])"/>
+    </div>
+    <div class="card">
+      <div class="card-title">Desteklenen Sütun Adları</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.25rem;font-size:0.68rem">
+        <div style="color:var(--text-muted)">Tutar</div><div style="color:var(--text-dim)">tutar, amount, bakiye, balance</div>
+        <div style="color:var(--text-muted)">Faiz</div><div style="color:var(--text-dim)">faiz, rate, faiz_orani, coupon</div>
+        <div style="color:var(--text-muted)">Vade</div><div style="color:var(--text-dim)">vade, repricing_months, maturity_months</div>
+        <div style="color:var(--text-muted)">Tip</div><div style="color:var(--text-dim)">tip, type — fixed/floating/sabit/değişken</div>
+        <div style="color:var(--text-muted)">Ad</div><div style="color:var(--text-dim)">ad, name, hesap_adi, product</div>
+        <div style="color:var(--text-muted)">Para Birimi</div><div style="color:var(--text-dim)">ccy, currency, para_birimi, doviz</div>
+      </div>
+    </div>
+  </div>
+  <div id="uploadResults"></div>
+</div>
+
+<!-- ══ TAB 2: PASTE ══ -->
+<div id="panel-paste" style="display:none">
+  <div class="grid-2 mb-2">
+    <div>
+      <div class="form-group">
+        <label class="form-label">Hangi taraf?</label>
+        <select class="form-select" id="pasteSide">
+          <option value="assets">Varlıklar</option>
+          <option value="liabilities">Yükümlülükler</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">CSV İçerik — Excel'den kopyala veya elle yaz</label>
+        <textarea class="form-input" id="csvPaste" rows="12" style="resize:vertical;font-size:0.68rem;font-family:var(--font-mono)"
+          placeholder="name,amount,rate,repricing_months,type&#10;Floating Rate Loans,2000,47.5,1,floating&#10;Fixed Corporate Loans,1200,44.0,12,fixed&#10;Gov Bond Portfolio,900,38.5,36,fixed"></textarea>
+      </div>
+      <button class="btn btn-primary w-full" onclick="parseCsv()">▶ Parse et</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Hızlı Başlangıç</div>
+      <p style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem">Excel'den varlık/yükümlülük tablosunu seçin, Ctrl+C ile kopyalayın, yukarıya yapıştırın.</p>
+      <button class="btn btn-ghost w-full" onclick="loadPasteSample()">Sample CSV Yükle</button>
+      <hr class="sep"/>
+      <div class="card-title">Format Notları</div>
+      <ul style="font-size:0.68rem;color:var(--text-muted);padding-left:1rem;line-height:1.8">
+        <li>Faiz: yüzde olarak (42.5 veya 0.425 her ikisi de çalışır)</li>
+        <li>Tutar: milyon TL (veya ilgili CCY)</li>
+        <li>Vade: ay cinsinden (3 = 3 aylık vadeli)</li>
+        <li>Tip: fixed/floating/sabit/değişken</li>
+        <li>Ondalık ayraç: nokta veya virgül her ikisi kabul edilir</li>
+      </ul>
+    </div>
+  </div>
+  <div id="pasteResults"></div>
+</div>
+
+<!-- ══ TAB 3: CONNECTOR ══ -->
+<div id="panel-connector" style="display:none">
+  <div class="card mb-2">
+    <div class="card-title">Core Banking Sisteminizi Seçin</div>
+    <div class="cb-grid" id="cbGrid"></div>
+    <div id="cbGuide" style="display:none">
+      <hr class="sep"/>
+      <div class="card-title" id="cbGuideTitle">Entegrasyon Rehberi</div>
+      <ul class="step-list" id="cbStepList"></ul>
+      <div style="margin-top:0.75rem;font-size:0.7rem;color:var(--text-muted)" id="cbNotes"></div>
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">Sütun Eşleme — Key Fields</div>
+    <div id="cbKeyFields" style="font-size:0.7rem;color:var(--text-muted)">Yukarıdan sistem seçin</div>
+  </div>
+</div>
+
+<!-- LOADED DATA PREVIEW + SEND TO MODULE -->
+<div id="loadedData" style="display:none;margin-top:1.5rem">
+  <div class="card">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0" id="loadedTitle">Yüklenen Veri</div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-primary" onclick="sendToNII()"    id="btnNII">→ NII Analizi</button>
+        <button class="btn btn-ghost"   onclick="sendToEVE()"    id="btnEVE">→ EVE Analizi</button>
+        <button class="btn btn-ghost"   onclick="sendToMorning()" id="btnBrief">→ Morning Brief</button>
+        <button class="btn btn-ghost"   onclick="clearLoaded()">✕ Temizle</button>
+      </div>
+    </div>
+    <div id="loadedPreview"></div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let loadedAssets = [];
+let loadedLiabs  = [];
+let lastSide     = 'assets';
+
+function switchTab(t) {
+  ['upload','paste','connector'].forEach(x => {
+    document.getElementById('panel-'+x).style.display   = x===t?'':'none';
+    document.getElementById('tab-'+t).classList.toggle('active', false);
+  });
+  document.getElementById('tab-'+t).classList.add('active');
+  if (t === 'connector') loadConnectors();
+}
+
+// ── DRAG DROP ─────────────────────────────────────────────────────────────
+const dz = document.getElementById('dropZone');
+dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('drag-over'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag-over'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+
+async function handleFile(file) {
+  if (!file) return;
+  const side = document.getElementById('uploadSide').value;
+  dz.innerHTML = `<div class="loading"><div class="spinner"></div> ${file.name} işleniyor...</div>`;
+  try {
+    if (file.name.endsWith('.csv') || file.type === 'text/csv') {
+      const text = await file.text();
+      const resp = await fetch('/api/import/csv', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({csv_text: text, side})
+      });
+      const d = await resp.json();
+      renderImportResult(d, 'uploadResults', side);
+    } else {
+      const buf  = await file.arrayBuffer();
+      const b64  = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      const resp = await fetch('/api/import/excel', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({file_base64: b64, side})
+      });
+      const d = await resp.json();
+      renderImportResult(d, 'uploadResults', side);
+    }
+  } catch(err) {
+    document.getElementById('uploadResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+  // Reset dropzone
+  dz.innerHTML = `<div class="drop-zone-icon">📂</div>
+    <p><strong style="color:var(--text)">Dosya seçin veya buraya sürükleyin</strong></p>
+    <p style="margin-top:0.3rem">Excel (.xlsx, .xls) veya CSV (.csv)</p>`;
+}
+
+// ── CSV PASTE ──────────────────────────────────────────────────────────────
+function loadPasteSample() {
+  document.getElementById('csvPaste').value =
+`name,amount,rate,repricing_months,type,currency
+Floating Rate Loans,2000,47.5,1,floating,TL
+Fixed Corporate Loans,1200,44.0,12,fixed,TL
+Gov Bond Portfolio,900,38.5,36,fixed,TL
+TLREF-linked Loans,500,46.0,1,floating,TL
+Mortgages (Fixed),300,35.0,60,fixed,TL`;
+  document.getElementById('pasteSide').value = 'assets';
+}
+
+async function parseCsv() {
+  const csv_text = document.getElementById('csvPaste').value.trim();
+  const side     = document.getElementById('pasteSide').value;
+  if (!csv_text) { alert('CSV içeriği boş.'); return; }
+  document.getElementById('pasteResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Parse ediliyor...</div>';
+  try {
+    const resp = await fetch('/api/import/csv', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({csv_text, side})
+    });
+    const d = await resp.json();
+    renderImportResult(d, 'pasteResults', side);
+  } catch(err) {
+    document.getElementById('pasteResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+// ── RENDER IMPORT RESULT ──────────────────────────────────────────────────
+function renderImportResult(d, containerId, side) {
+  if (d.error) {
+    document.getElementById(containerId).innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${d.error}</p></div>`;
+    return;
+  }
+
+  // Store
+  lastSide = side;
+  if (side === 'assets')      loadedAssets = d.rows;
+  else                         loadedLiabs  = d.rows;
+
+  const warnHTML = d.warnings?.length
+    ? `<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.68rem;color:var(--gold)">
+       ⚠️ ${d.warnings.join('<br>')}</div>` : '';
+
+  const rows = d.rows.slice(0,20).map(r => `<tr>
+    <td style="font-weight:500;color:var(--text)">${r.name}</td>
+    <td class="r">${r.amount.toFixed(1)}M</td>
+    <td class="r">${r.rate.toFixed(3)}%</td>
+    <td class="r">${r.repricing_months}ay</td>
+    <td><span class="badge ${r.type==='floating'?'badge-blue':'badge-muted'}">${r.type}</span></td>
+    <td style="color:var(--text-muted)">${r.currency||'TL'}</td>
+    <span class="ok-pill" style="display:none"></span>
+  </tr>`).join('');
+
+  document.getElementById(containerId).innerHTML = `
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">Yüklenen Kayıt</div><div class="stat-value positive">${d.count}</div></div>
+      <div class="stat-box"><div class="stat-label">Atlanan</div><div class="stat-value ${d.skipped>0?'negative':''}">${d.skipped||0}</div></div>
+      <div class="stat-box"><div class="stat-label">Taraf</div><div class="stat-value">${side==='assets'?'Varlıklar':'Yükümlülükler'}</div></div>
+      <div class="stat-box"><div class="stat-label">Uyarı</div><div class="stat-value ${d.warnings?.length?'negative':''}">${d.warnings?.length||0}</div></div>
+    </div>
+    ${warnHTML}
+    <table class="import-table">
+      <thead><tr><th>Ad</th><th class="r">Tutar</th><th class="r">Faiz</th><th class="r">Vade</th><th>Tip</th><th>CCY</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${d.count>20?`<div style="font-size:0.65rem;color:var(--text-muted);padding:0.4rem">... ve ${d.count-20} kayıt daha</div>`:''}
+    <div style="margin-top:0.75rem;display:flex;gap:0.5rem">
+      <button class="btn btn-primary" onclick="loadedDataReady()">✓ Veriyi Kullan</button>
+      ${side==='assets'
+        ? `<button class="btn btn-ghost" onclick="document.getElementById('pasteSide').value='liabilities';document.getElementById('uploadSide').value='liabilities'">→ Şimdi Yükümlülük Yükle</button>`
+        : ''}
+    </div>`;
+
+  if (loadedAssets.length || loadedLiabs.length) loadedDataReady();
+}
+
+function loadedDataReady() {
+  const la = loadedAssets.length;
+  const ll = loadedLiabs.length;
+  if (!la && !ll) return;
+  document.getElementById('loadedData').style.display = '';
+  document.getElementById('loadedTitle').textContent =
+    `Yüklenen: ${la} varlık, ${ll} yükümlülük`;
+  const totalA = loadedAssets.reduce((s,r)=>s+r.amount,0);
+  const totalL = loadedLiabs.reduce((s,r)=>s+r.amount,0);
+  document.getElementById('loadedPreview').innerHTML = `
+    <div style="display:flex;gap:1rem;font-size:0.72rem">
+      <div><span style="color:var(--green)">✓ Varlıklar:</span> ${la} kalem — Toplam ${totalA.toFixed(0)}M</div>
+      <div><span style="color:var(--red)">✓ Yükümlülükler:</span> ${ll} kalem — Toplam ${totalL.toFixed(0)}M</div>
+    </div>
+    <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem">Analiz modülüne göndermek için sağ üstteki butonları kullanın.</div>`;
+}
+
+function sendToNII() {
+  sessionStorage.setItem('brd_import_assets', JSON.stringify(loadedAssets));
+  sessionStorage.setItem('brd_import_liabs',  JSON.stringify(loadedLiabs));
+  window.location.href = '/nii-sensitivity';
+}
+function sendToEVE() {
+  sessionStorage.setItem('brd_import_assets', JSON.stringify(loadedAssets));
+  sessionStorage.setItem('brd_import_liabs',  JSON.stringify(loadedLiabs));
+  window.location.href = '/eve-duration-gap';
+}
+function sendToMorning() {
+  sessionStorage.setItem('brd_import_assets', JSON.stringify(loadedAssets));
+  sessionStorage.setItem('brd_import_liabs',  JSON.stringify(loadedLiabs));
+  window.location.href = '/morning-brief';
+}
+function clearLoaded() {
+  loadedAssets = []; loadedLiabs = [];
+  document.getElementById('loadedData').style.display = 'none';
+}
+
+// ── CONNECTOR ─────────────────────────────────────────────────────────────
+async function loadConnectors() {
+  if (document.getElementById('cbGrid').children.length) return;
+  try {
+    const resp = await fetch('/api/import/connectors');
+    const list = await resp.json();
+    document.getElementById('cbGrid').innerHTML = list.map(p => `
+      <div class="cb-card" onclick="selectConnector('${p.id}',this)">
+        <div class="cb-name">${p.name}</div>
+        <div class="cb-fmt">${p.export_format}</div>
+      </div>`).join('');
+  } catch(err) {}
+}
+
+async function selectConnector(id, el) {
+  document.querySelectorAll('.cb-card').forEach(c=>c.classList.remove('selected'));
+  el.classList.add('selected');
+  try {
+    const resp = await fetch(`/api/import/connector-guide/${id}`);
+    const d    = await resp.json();
+    document.getElementById('cbGuide').style.display = '';
+    document.getElementById('cbGuideTitle').textContent =
+      `${d.profile.name} — Entegrasyon Adımları`;
+    document.getElementById('cbStepList').innerHTML = d.steps.map((s,i) =>
+      `<li><div class="step-num">${i+1}</div><span>${s}</span></li>`).join('');
+    document.getElementById('cbNotes').innerHTML =
+      `<strong style="color:var(--text)">Not:</strong> ${d.profile.notes}`;
+    const kf = d.profile.key_fields;
+    document.getElementById('cbKeyFields').innerHTML = Object.entries(kf).map(([k,v]) =>
+      `<div class="metric-row" style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid var(--border-soft)">
+        <span style="color:var(--text-muted)">${k}</span>
+        <span style="font-family:var(--font-mono);color:var(--accent)">${v}</span>
+      </div>`).join('');
+  } catch(err) {}
+}
+</script>
+{% endblock %}

@@ -1,0 +1,476 @@
+{% extends 'base.html' %}
+{% block title %}Liquidity Ratios — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs-outer { display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 1rem; }
+.tab-btn {
+  padding: 0.45rem 1.25rem; font-size: 0.75rem; font-family: var(--font-mono);
+  color: var(--text-muted); border-bottom: 2px solid transparent;
+  cursor: pointer; transition: all 0.15s;
+}
+.tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+.ratio-gauge {
+  display: flex; align-items: center; gap: 1.5rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 1.25rem 1.5rem; margin-bottom: 1rem;
+}
+.gauge-num {
+  font-family: var(--font-mono); font-size: 2.5rem; font-weight: 500;
+  line-height: 1; min-width: 100px;
+}
+.gauge-num.pass { color: var(--green); }
+.gauge-num.fail { color: var(--red); }
+.gauge-label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-muted); margin-bottom: 0.2rem; }
+.gauge-track { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.gauge-fill  { height: 100%; border-radius: 4px; transition: width 0.6s; max-width: 100%; }
+.gauge-fill.pass { background: var(--green); }
+.gauge-fill.fail { background: var(--red); }
+.gauge-meta  { font-size: 0.68rem; color: var(--text-muted); margin-top: 0.3rem; }
+
+.items-list-sm { display: flex; flex-direction: column; gap: 0.3rem; max-height: 200px; overflow-y: auto; }
+.item-sm-row {
+  display: grid; gap: 0.3rem; align-items: center;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.3rem 0.5rem; font-size: 0.67rem;
+}
+.item-remove { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.75rem; }
+.item-remove:hover { color: var(--red); }
+
+.add-form-sm { display: grid; gap: 0.4rem; }
+.detail-table { width: 100%; border-collapse: collapse; font-size: 0.7rem; }
+.detail-table th {
+  text-align: left; padding: 0.3rem 0.6rem;
+  color: var(--text-muted); font-size: 0.6rem; text-transform: uppercase;
+  letter-spacing: 0.06em; border-bottom: 1px solid var(--border); font-weight: 400;
+}
+.detail-table td { padding: 0.35rem 0.6rem; border-bottom: 1px solid var(--border-soft); color: var(--text-dim); }
+.detail-table tr:hover td { background: var(--surface); color: var(--text); }
+.detail-table .r { text-align: right; font-variant-numeric: tabular-nums; }
+.detail-table .pos { color: var(--green); }
+.detail-table .neg { color: var(--red); }
+.level-badge { font-size: 0.6rem; border-radius: 3px; padding: 1px 5px; text-align: center; font-weight: 600; }
+.level-1  { background: var(--green-dim);   color: var(--green); }
+.level-2A { background: var(--gold-dim);    color: var(--gold); }
+.level-2B { background: rgba(239,68,68,.15); color: var(--red); }
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Liquidity Ratios</h1>
+      <p>LCR and NSFR calculator — Basel III standard with HQLA haircuts, inflow caps, and L2 concentration limits</p>
+    </div>
+    <div class="flex-center gap-sm">
+      <span class="badge badge-muted" style="font-size:0.6rem">LCR ≥ 100%</span>
+      <span class="badge badge-muted" style="font-size:0.6rem">NSFR ≥ 100%</span>
+    </div>
+  </div>
+</div>
+
+<!-- Tab switcher: LCR | NSFR -->
+<div class="tabs-outer">
+  <div class="tab-btn active" id="tabLCR"  onclick="switchTab('LCR')">LCR — Liquidity Coverage Ratio</div>
+  <div class="tab-btn"        id="tabNSFR" onclick="switchTab('NSFR')">NSFR — Net Stable Funding Ratio</div>
+</div>
+
+<!-- ══ LCR TAB ══ -->
+<div id="panelLCR">
+<div class="grid-2">
+
+  <!-- Left inputs -->
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+
+    <div class="card">
+      <div class="card-title">HQLA — High Quality Liquid Assets</div>
+      <div class="items-list-sm" id="hqlaList"></div>
+      <hr class="sep"/>
+      <div class="add-form-sm" style="grid-template-columns:1fr 90px 80px 22px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" id="hName" placeholder="e.g. Cash & Reserves"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Amount (M)</label><input class="form-input" id="hAmt" type="number" placeholder="500"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Level</label>
+          <select class="form-select" id="hLevel"><option value="1">L1 (0% haircut)</option><option value="2a">L2A (15%)</option><option value="2b">L2B (50%)</option></select>
+        </div>
+        <button class="btn btn-ghost" style="margin-bottom:0.75rem;white-space:nowrap" onclick="addHQLA()">+</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cash Outflows (30-day stress)</div>
+      <div class="items-list-sm" id="outflowList"></div>
+      <hr class="sep"/>
+      <div class="add-form-sm" style="grid-template-columns:1fr 80px 70px 22px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" id="oName" placeholder="e.g. Retail Stable Deposits"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Balance (M)</label><input class="form-input" id="oAmt" type="number" placeholder="1000"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Runoff %</label>
+          <select class="form-select" id="oRate">
+            <option value="5">5% (Retail stable)</option>
+            <option value="10">10% (Retail less stable)</option>
+            <option value="25">25% (Operational)</option>
+            <option value="100">100% (Wholesale non-op)</option>
+            <option value="30">30% (Liquidity facility)</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" style="margin-bottom:0.75rem" onclick="addOutflow()">+</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Cash Inflows (30-day)</div>
+      <div class="items-list-sm" id="inflowList"></div>
+      <hr class="sep"/>
+      <div class="add-form-sm" style="grid-template-columns:1fr 80px 70px 22px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" id="iName" placeholder="e.g. Maturing Loans"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Amount (M)</label><input class="form-input" id="iAmt" type="number" placeholder="200"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Inflow %</label>
+          <select class="form-select" id="iRate">
+            <option value="50">50% (Retail loans)</option>
+            <option value="100">100% (Wholesale)</option>
+            <option value="0">0% (Secured L1)</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" style="margin-bottom:0.75rem" onclick="addInflow()">+</button>
+      </div>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:0.4rem">
+      <button class="btn btn-primary w-full" onclick="runLCR()">▶ Calculate LCR</button>
+      <button class="btn btn-ghost  w-full" onclick="loadSampleLCR()">Load Sample</button>
+    </div>
+  </div>
+
+  <!-- Right results -->
+  <div id="lcrResults">
+    <div class="coming-soon"><div class="coming-soon-icon">🏦</div><h2>LCR Results</h2><p>Add HQLA, outflows, and inflows then calculate.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ══ NSFR TAB ══ -->
+<div id="panelNSFR" style="display:none">
+<div class="grid-2">
+
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Available Stable Funding (ASF)</div>
+      <div class="items-list-sm" id="asfList"></div>
+      <hr class="sep"/>
+      <div class="add-form-sm" style="grid-template-columns:1fr 80px 80px 22px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" id="asfName" placeholder="e.g. Tier 1 Capital"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Amount (M)</label><input class="form-input" id="asfAmt" type="number" placeholder="600"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">ASF Factor %</label>
+          <select class="form-select" id="asfFactor">
+            <option value="100">100% (Tier 1/2 capital)</option>
+            <option value="95">95% (Stable retail >12M)</option>
+            <option value="90">90% (Less stable <12M)</option>
+            <option value="50">50% (Wholesale non-op)</option>
+            <option value="0">0% (Other)</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" style="margin-bottom:0.75rem" onclick="addASF()">+</button>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Required Stable Funding (RSF)</div>
+      <div class="items-list-sm" id="rsfList"></div>
+      <hr class="sep"/>
+      <div class="add-form-sm" style="grid-template-columns:1fr 80px 80px 22px;align-items:end">
+        <div class="form-group" style="margin:0"><label class="form-label">Name</label><input class="form-input" id="rsfName" placeholder="e.g. Corporate Loans >1Y"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">Amount (M)</label><input class="form-input" id="rsfAmt" type="number" placeholder="1000"/></div>
+        <div class="form-group" style="margin:0"><label class="form-label">RSF Factor %</label>
+          <select class="form-select" id="rsfFactor">
+            <option value="5">5% (HQLA L1)</option>
+            <option value="15">15% (HQLA L2A)</option>
+            <option value="50">50% (Corp loans <1Y)</option>
+            <option value="65">65% (Residential mortgages)</option>
+            <option value="85">85% (Corp loans >1Y)</option>
+            <option value="100">100% (Other assets)</option>
+          </select>
+        </div>
+        <button class="btn btn-ghost" style="margin-bottom:0.75rem" onclick="addRSF()">+</button>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0.4rem">
+      <button class="btn btn-primary w-full" onclick="runNSFR()">▶ Calculate NSFR</button>
+      <button class="btn btn-ghost  w-full" onclick="loadSampleNSFR()">Load Sample</button>
+    </div>
+  </div>
+
+  <div id="nsfrResults">
+    <div class="coming-soon"><div class="coming-soon-icon">🏦</div><h2>NSFR Results</h2><p>Add ASF and RSF items then calculate.</p></div>
+  </div>
+</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// State
+let hqlaItems=[], outflowItems=[], inflowItems=[];
+let asfItems=[], rsfItems=[];
+let lcrData=null, nsfrData=null;
+
+// ── Tab ────────────────────────────────────────────────────────────────────
+function switchTab(tab) {
+  document.getElementById('panelLCR').style.display  = tab==='LCR'  ? '' : 'none';
+  document.getElementById('panelNSFR').style.display = tab==='NSFR' ? '' : 'none';
+  document.getElementById('tabLCR').classList.toggle('active',  tab==='LCR');
+  document.getElementById('tabNSFR').classList.toggle('active', tab==='NSFR');
+}
+
+// ── Generic list helpers ───────────────────────────────────────────────────
+function renderSmallList(id, items, removeFunc, cols) {
+  const el = document.getElementById(id);
+  if (!items.length) { el.innerHTML='<div class="text-muted" style="font-size:0.7rem;padding:0.3rem">Empty</div>'; return; }
+  el.innerHTML = items.map((item,i) =>
+    `<div class="item-sm-row" style="grid-template-columns:${cols}">
+      ${item._cells}
+      <button class="item-remove" onclick="${removeFunc}(${i})">✕</button>
+    </div>`).join('');
+}
+
+// ── HQLA ───────────────────────────────────────────────────────────────────
+function addHQLA() {
+  const name  = document.getElementById('hName').value.trim();
+  const amt   = parseFloat(document.getElementById('hAmt').value);
+  const level = document.getElementById('hLevel').value;
+  if (!name || isNaN(amt)) return;
+  const haircut = level==='1'?0:level==='2a'?15:50;
+  hqlaItems.push({name, amount:amt, level,
+    _cells:`<span style="font-size:0.68rem;color:var(--text)">${name}</span>
+            <span class="level-badge level-${level.toUpperCase()}">${level.toUpperCase()}</span>
+            <span style="text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--accent)">${amt.toLocaleString()}M</span>
+            <span style="text-align:right;font-size:0.62rem;color:var(--text-muted)">${haircut}% cut</span>`
+  });
+  renderSmallList('hqlaList', hqlaItems, 'removeHQLA', '1fr 50px 70px 55px 22px');
+  document.getElementById('hName').value=''; document.getElementById('hAmt').value='';
+}
+function removeHQLA(i) { hqlaItems.splice(i,1); renderSmallList('hqlaList',hqlaItems,'removeHQLA','1fr 50px 70px 55px 22px'); }
+
+// ── Outflows ────────────────────────────────────────────────────────────────
+function addOutflow() {
+  const name = document.getElementById('oName').value.trim();
+  const amt  = parseFloat(document.getElementById('oAmt').value);
+  const rr   = parseFloat(document.getElementById('oRate').value);
+  if (!name||isNaN(amt)) return;
+  outflowItems.push({name, amount:amt, runoff_rate:rr,
+    _cells:`<span style="font-size:0.68rem;color:var(--text)">${name}</span>
+            <span style="text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--accent)">${amt.toLocaleString()}M</span>
+            <span style="text-align:right;font-size:0.65rem;color:var(--red)">${rr}%</span>
+            <span style="text-align:right;font-size:0.62rem;color:var(--text-muted)">→${fmt(amt*rr/100)}M</span>`
+  });
+  renderSmallList('outflowList',outflowItems,'removeOutflow','1fr 70px 55px 55px 22px');
+  document.getElementById('oName').value=''; document.getElementById('oAmt').value='';
+}
+function removeOutflow(i){outflowItems.splice(i,1);renderSmallList('outflowList',outflowItems,'removeOutflow','1fr 70px 55px 55px 22px');}
+
+// ── Inflows ─────────────────────────────────────────────────────────────────
+function addInflow() {
+  const name = document.getElementById('iName').value.trim();
+  const amt  = parseFloat(document.getElementById('iAmt').value);
+  const ir   = parseFloat(document.getElementById('iRate').value);
+  if (!name||isNaN(amt)) return;
+  inflowItems.push({name, amount:amt, inflow_rate:ir,
+    _cells:`<span style="font-size:0.68rem;color:var(--text)">${name}</span>
+            <span style="text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--accent)">${amt.toLocaleString()}M</span>
+            <span style="text-align:right;font-size:0.65rem;color:var(--green)">${ir}%</span>
+            <span style="text-align:right;font-size:0.62rem;color:var(--text-muted)">→${fmt(amt*ir/100)}M</span>`
+  });
+  renderSmallList('inflowList',inflowItems,'removeInflow','1fr 70px 55px 55px 22px');
+  document.getElementById('iName').value=''; document.getElementById('iAmt').value='';
+}
+function removeInflow(i){inflowItems.splice(i,1);renderSmallList('inflowList',inflowItems,'removeInflow','1fr 70px 55px 55px 22px');}
+
+// ── ASF / RSF ───────────────────────────────────────────────────────────────
+function addASF() {
+  const name=document.getElementById('asfName').value.trim();
+  const amt=parseFloat(document.getElementById('asfAmt').value);
+  const f=parseFloat(document.getElementById('asfFactor').value);
+  if(!name||isNaN(amt))return;
+  asfItems.push({name,amount:amt,asf_factor:f,
+    _cells:`<span style="font-size:0.68rem;color:var(--text)">${name}</span>
+            <span style="text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--accent)">${amt.toLocaleString()}M</span>
+            <span style="text-align:right;font-size:0.65rem;color:var(--green)">${f}%</span>
+            <span style="text-align:right;font-size:0.62rem;color:var(--text-muted)">→${fmt(amt*f/100)}M</span>`
+  });
+  renderSmallList('asfList',asfItems,'removeASF','1fr 70px 55px 55px 22px');
+  document.getElementById('asfName').value=''; document.getElementById('asfAmt').value='';
+}
+function removeASF(i){asfItems.splice(i,1);renderSmallList('asfList',asfItems,'removeASF','1fr 70px 55px 55px 22px');}
+
+function addRSF() {
+  const name=document.getElementById('rsfName').value.trim();
+  const amt=parseFloat(document.getElementById('rsfAmt').value);
+  const f=parseFloat(document.getElementById('rsfFactor').value);
+  if(!name||isNaN(amt))return;
+  rsfItems.push({name,amount:amt,rsf_factor:f,
+    _cells:`<span style="font-size:0.68rem;color:var(--text)">${name}</span>
+            <span style="text-align:right;font-family:var(--font-mono);font-size:0.65rem;color:var(--accent)">${amt.toLocaleString()}M</span>
+            <span style="text-align:right;font-size:0.65rem;color:var(--red)">${f}%</span>
+            <span style="text-align:right;font-size:0.62rem;color:var(--text-muted)">→${fmt(amt*f/100)}M</span>`
+  });
+  renderSmallList('rsfList',rsfItems,'removeRSF','1fr 70px 55px 55px 22px');
+  document.getElementById('rsfName').value=''; document.getElementById('rsfAmt').value='';
+}
+function removeRSF(i){rsfItems.splice(i,1);renderSmallList('rsfList',rsfItems,'removeRSF','1fr 70px 55px 55px 22px');}
+
+// ── Sample data ─────────────────────────────────────────────────────────────
+function loadSampleLCR() {
+  hqlaItems = []; outflowItems = []; inflowItems = [];
+  [['Cash & Central Bank Reserves','1',800],['Gov Bonds (Sovereign)','1',600],['Agency Bonds','2a',300],['High-grade Corp Bonds','2a',200],['Listed Equities','2b',100]]
+    .forEach(([n,l,a]) => { document.getElementById('hName').value=n; document.getElementById('hAmt').value=a; document.getElementById('hLevel').value=l; addHQLA(); });
+  [['Retail Stable Deposits',1500,5],['Retail Less Stable',800,10],['Small Business Deposits',400,10],['Wholesale Non-Operational',600,100],['Committed Liquidity Facility',300,30]]
+    .forEach(([n,a,r]) => { document.getElementById('oName').value=n; document.getElementById('oAmt').value=a; document.getElementById('oRate').value=r; addOutflow(); });
+  [['Maturing Retail Loans',200,50],['Maturing Wholesale Loans',150,100]]
+    .forEach(([n,a,r]) => { document.getElementById('iName').value=n; document.getElementById('iAmt').value=a; document.getElementById('iRate').value=r; addInflow(); });
+}
+function loadSampleNSFR() {
+  asfItems = []; rsfItems = [];
+  [['Tier 1 Capital',1500,100],['Tier 2 Capital',200,100],['Stable Retail Deposits >12M',1200,95],['Less Stable Deposits <12M',800,90],['Wholesale Non-op >6M',400,50]]
+    .forEach(([n,a,f]) => { document.getElementById('asfName').value=n; document.getElementById('asfAmt').value=a; document.getElementById('asfFactor').value=f; addASF(); });
+  [['HQLA Level 1',600,5],['Corp Loans <1Y',800,50],['Residential Mortgages',500,65],['Corp Loans >1Y',1200,85],['Other Assets',300,100]]
+    .forEach(([n,a,f]) => { document.getElementById('rsfName').value=n; document.getElementById('rsfAmt').value=a; document.getElementById('rsfFactor').value=f; addRSF(); });
+}
+
+// ── Run ─────────────────────────────────────────────────────────────────────
+async function runLCR() {
+  document.getElementById('lcrResults').innerHTML = '<div class="loading"><div class="spinner"></div> Calculating LCR...</div>';
+  try {
+    const resp = await fetch('/api/liquidity/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({hqla:hqlaItems, outflows:outflowItems, inflows:inflowItems, asf:[], rsf:[]})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    lcrData = d.lcr;
+    renderLCR(d.lcr);
+  } catch(err) {
+    document.getElementById('lcrResults').innerHTML = `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+async function runNSFR() {
+  document.getElementById('nsfrResults').innerHTML = '<div class="loading"><div class="spinner"></div> Calculating NSFR...</div>';
+  try {
+    const resp = await fetch('/api/liquidity/calculate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({hqla:[], outflows:[], inflows:[], asf:asfItems, rsf:rsfItems})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    nsfrData = d.nsfr;
+    renderNSFR(d.nsfr);
+  } catch(err) {
+    document.getElementById('nsfrResults').innerHTML = `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderLCR(lcr) {
+  const pass   = lcr.status === 'PASS';
+  const fillW  = Math.min(lcr.ratio / 150 * 100, 100).toFixed(1);
+  const hqlaRows = lcr.hqla_detail.map(h => `
+    <tr><td>${h.name}</td>
+    <td class="r"><span class="level-badge level-${h.level}">${h.level}</span></td>
+    <td class="r">${fmt(h.amount)}M</td>
+    <td class="r">${h.haircut_pct}%</td>
+    <td class="r pos">${fmt(h.adj_amount)}M</td></tr>`).join('');
+  const outRows = lcr.outflow_detail.map(o =>
+    `<tr><td>${o.name}</td><td class="r">${fmt(o.amount)}M</td><td class="r">${o.runoff_rate}%</td><td class="r neg">${fmt(o.stressed_outflow)}M</td></tr>`).join('');
+  const inRows  = lcr.inflow_detail.map(i =>
+    `<tr><td>${i.name}</td><td class="r">${fmt(i.amount)}M</td><td class="r">${i.inflow_rate}%</td><td class="r pos">${fmt(i.stressed_inflow)}M</td></tr>`).join('');
+
+  document.getElementById('lcrResults').innerHTML = `
+    <div class="ratio-gauge">
+      <div>
+        <div class="gauge-label">LCR</div>
+        <div class="gauge-num ${pass?'pass':'fail'}">${lcr.ratio.toFixed(1)}%</div>
+        <div class="gauge-meta">${pass?'✓ PASS — above 100% minimum':'✗ FAIL — below 100% minimum'}</div>
+      </div>
+      <div style="flex:1">
+        <div class="gauge-track"><div class="gauge-fill ${pass?'pass':'fail'}" style="width:${fillW}%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:0.62rem;color:var(--text-muted);margin-top:0.3rem">
+          <span>0%</span><span style="color:var(--accent)">100% (min)</span><span>150%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-3 mb-2" style="gap:0.5rem">
+      <div class="stat-box"><div class="stat-label">HQLA (adjusted)</div><div class="stat-value positive">${fmt(lcr.hqla_total)}M</div><div class="stat-sub">L1 ${fmt(lcr.hqla_l1)} / L2A ${fmt(lcr.hqla_l2a)} / L2B ${fmt(lcr.hqla_l2b)}</div></div>
+      <div class="stat-box"><div class="stat-label">Net Cash Outflows</div><div class="stat-value">${fmt(lcr.net_outflows)}M</div><div class="stat-sub">Gross out ${fmt(lcr.gross_outflows)} − in ${fmt(lcr.gross_inflows)}</div></div>
+      <div class="stat-box"><div class="stat-label">LCR Buffer</div><div class="stat-value ${lcr.surplus>=0?'positive':'negative'}">${lcr.surplus>=0?'+':''}${fmt(lcr.surplus)}M</div><div class="stat-sub">HQLA above/below requirement</div></div>
+    </div>
+
+    <div class="grid-3 mb-2" style="gap:0.75rem">
+      <div class="card">
+        <div class="card-title">HQLA</div>
+        <table class="detail-table"><thead><tr><th>Asset</th><th class="r">Level</th><th class="r">Nominal</th><th class="r">Haircut</th><th class="r">Adjusted</th></tr></thead>
+        <tbody>${hqlaRows}</tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Cash Outflows</div>
+        <table class="detail-table"><thead><tr><th>Category</th><th class="r">Balance</th><th class="r">Runoff</th><th class="r">Stressed</th></tr></thead>
+        <tbody>${outRows}</tbody></table>
+      </div>
+      <div class="card">
+        <div class="card-title">Cash Inflows</div>
+        <table class="detail-table"><thead><tr><th>Category</th><th class="r">Balance</th><th class="r">Rate</th><th class="r">Stressed</th></tr></thead>
+        <tbody>${inRows}</tbody></table>
+        <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.5rem">Inflow cap: 75% of gross outflows (${fmt(lcr.inflow_cap)}M applied)</div>
+      </div>
+    </div>`;
+}
+
+function renderNSFR(nsfr) {
+  const pass  = nsfr.status === 'PASS';
+  const fillW = Math.min(nsfr.ratio / 150 * 100, 100).toFixed(1);
+  const asfRows = nsfr.asf_detail.map(a =>
+    `<tr><td>${a.name}</td><td class="r">${fmt(a.amount)}M</td><td class="r">${a.asf_factor}%</td><td class="r pos">${fmt(a.asf)}M</td></tr>`).join('');
+  const rsfRows = nsfr.rsf_detail.map(r =>
+    `<tr><td>${r.name}</td><td class="r">${fmt(r.amount)}M</td><td class="r">${r.rsf_factor}%</td><td class="r neg">${fmt(r.rsf)}M</td></tr>`).join('');
+
+  document.getElementById('nsfrResults').innerHTML = `
+    <div class="ratio-gauge">
+      <div>
+        <div class="gauge-label">NSFR</div>
+        <div class="gauge-num ${pass?'pass':'fail'}">${nsfr.ratio.toFixed(1)}%</div>
+        <div class="gauge-meta">${pass?'✓ PASS':'✗ FAIL — insufficient stable funding'}</div>
+      </div>
+      <div style="flex:1">
+        <div class="gauge-track"><div class="gauge-fill ${pass?'pass':'fail'}" style="width:${fillW}%"></div></div>
+        <div style="display:flex;justify-content:space-between;font-size:0.62rem;color:var(--text-muted);margin-top:0.3rem">
+          <span>0%</span><span style="color:var(--accent)">100% (min)</span><span>150%</span>
+        </div>
+      </div>
+    </div>
+    <div class="grid-3 mb-2" style="gap:0.5rem">
+      <div class="stat-box"><div class="stat-label">Available Stable Funding</div><div class="stat-value positive">${fmt(nsfr.asf_total)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Required Stable Funding</div><div class="stat-value">${fmt(nsfr.rsf_total)}M</div></div>
+      <div class="stat-box"><div class="stat-label">NSFR Surplus</div><div class="stat-value ${nsfr.surplus>=0?'positive':'negative'}">${nsfr.surplus>=0?'+':''}${fmt(nsfr.surplus)}M</div></div>
+    </div>
+    <div class="grid-2 mb-2" style="gap:0.75rem">
+      <div class="card"><div class="card-title">ASF — Available Stable Funding</div>
+        <table class="detail-table"><thead><tr><th>Item</th><th class="r">Amount</th><th class="r">Factor</th><th class="r">ASF</th></tr></thead>
+        <tbody>${asfRows}<tr style="font-weight:500"><td>Total</td><td class="r">—</td><td class="r">—</td><td class="r pos">${fmt(nsfr.asf_total)}M</td></tr></tbody></table>
+      </div>
+      <div class="card"><div class="card-title">RSF — Required Stable Funding</div>
+        <table class="detail-table"><thead><tr><th>Item</th><th class="r">Amount</th><th class="r">Factor</th><th class="r">RSF</th></tr></thead>
+        <tbody>${rsfRows}<tr style="font-weight:500"><td>Total</td><td class="r">—</td><td class="r">—</td><td class="r neg">${fmt(nsfr.rsf_total)}M</td></tr></tbody></table>
+      </div>
+    </div>`;
+}
+
+function fmt(v) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});
+}
+
+// Init
+renderSmallList('hqlaList',    hqlaItems,    'removeHQLA',    '1fr 50px 70px 55px 22px');
+renderSmallList('outflowList', outflowItems, 'removeOutflow', '1fr 70px 55px 55px 22px');
+renderSmallList('inflowList',  inflowItems,  'removeInflow',  '1fr 70px 55px 55px 22px');
+renderSmallList('asfList',     asfItems,     'removeASF',     '1fr 70px 55px 55px 22px');
+renderSmallList('rsfList',     rsfItems,     'removeRSF',     '1fr 70px 55px 55px 22px');
+</script>
+{% endblock %}

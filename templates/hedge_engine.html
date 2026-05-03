@@ -1,0 +1,236 @@
+{% extends 'base.html' %}
+{% block title %}Hedge Engine — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display:grid; grid-template-columns:280px 1fr; gap:1rem; align-items:start; }
+.hedge-table { width:100%; border-collapse:collapse; font-size:0.71rem; }
+.hedge-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em; border-bottom:1px solid var(--border); font-weight:400; }
+.hedge-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.hedge-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.hedge-table tr.optimal td { background:rgba(37,99,235,0.07); }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.38rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+.direction-badge { padding:0.35rem 0.9rem; border-radius:var(--radius); font-family:var(--font-head); font-size:0.75rem; font-weight:700; }
+.receive-fixed { background:rgba(16,185,129,.15); color:var(--green); border:1px solid rgba(16,185,129,.3); }
+.pay-fixed     { background:rgba(239,68,68,.15);  color:var(--red);   border:1px solid rgba(239,68,68,.3); }
+.breach-card   { background:rgba(239,68,68,.06); border:1px solid rgba(239,68,68,.3); border-radius:var(--radius); padding:0.75rem 1rem; margin-bottom:0.75rem; }
+.nii-row       { display:flex; justify-content:space-between; align-items:center; padding:0.35rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Hedge Recommendation Engine</h1>
+  <p>Duration gap, EVE ve NII bazlı IRS/swap öneri — "kaç notional, hangi tenor, hangi yön?"</p>
+</div>
+
+<div class="layout">
+  <div class="card">
+    <div class="card-title">Bilanço Parametreleri</div>
+    <div class="form-group"><label class="form-label">Duration Gap (Y)</label><input class="form-input" id="hDurGap" type="number" step="0.01" placeholder="-0.7"/></div>
+    <div class="form-group"><label class="form-label">Hedef Duration Gap (Y)</label><input class="form-input" id="hTargetGap" type="number" step="0.01" value="0"/></div>
+    <div class="form-group"><label class="form-label">Total Assets (M)</label><input class="form-input" id="hAssets" type="number" placeholder="4900"/></div>
+    <div class="form-group"><label class="form-label">Total Liabilities (M)</label><input class="form-input" id="hLiabs" type="number" placeholder="4600"/></div>
+    <div class="form-group"><label class="form-label">Tier 1 Capital (M)</label><input class="form-input" id="hTier1" type="number" placeholder="1500"/></div>
+    <hr class="sep"/>
+    <div class="form-group"><label class="form-label">ΔEVE Worst (M)</label><input class="form-input" id="hEVE" type="number" placeholder="-185"/></div>
+    <div class="form-group"><label class="form-label">EVE Limit (% Tier1)</label><input class="form-input" id="hEVELimit" type="number" value="15"/></div>
+    <hr class="sep"/>
+    <div class="form-group"><label class="form-label">NII Base (M)</label><input class="form-input" id="hNIIBase" type="number" placeholder="620"/></div>
+    <div class="form-group"><label class="form-label">NII Worst Δ (M)</label><input class="form-input" id="hNIIDelta" type="number" placeholder="-14"/></div>
+    <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="hBaseRate" type="number" step="0.25" value="42.5"/></div>
+    <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="runHedge()">▶ Öneri Üret</button>
+    <div style="display:flex;gap:0.4rem;margin-top:0.4rem">
+      <button class="btn btn-ghost" style="flex:1;font-size:0.68rem;color:var(--gold)" onclick="prefillHedge()" title="EVE ve NII hesaplamalarından otomatik doldur">🔄 Hesaplamalardan</button>
+      <button class="btn btn-ghost" style="flex:1;font-size:0.68rem" onclick="loadSample()">Örnek</button>
+    </div>
+  </div>
+
+  <div id="hedgeResults">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">⚖️</div><h2>Hedge Engine</h2>
+      <p>Bilanço parametrelerini girin. Sistem duration gap'i kapatmak için gereken IRS notional, tenor seçimi ve NII etkisini hesaplar.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function loadSample() {
+  document.getElementById('hDurGap').value    = '-0.7';
+  document.getElementById('hTargetGap').value = '0';
+  document.getElementById('hAssets').value    = '4900';
+  document.getElementById('hLiabs').value     = '4600';
+  document.getElementById('hTier1').value     = '1500';
+  document.getElementById('hEVE').value       = '-185';
+  document.getElementById('hEVELimit').value  = '15';
+  document.getElementById('hNIIBase').value   = '620';
+  document.getElementById('hNIIDelta').value  = '-14';
+  document.getElementById('hBaseRate').value  = '42.5';
+}
+
+function g(id,def) { const v=parseFloat(document.getElementById(id).value); return isNaN(v)?(def??null):v; }
+
+async function runHedge() {
+  document.getElementById('hedgeResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Hedge analizi hesaplanıyor...</div>';
+  const payload = {
+    duration_gap:       g('hDurGap',0),
+    target_duration_gap:g('hTargetGap',0),
+    total_assets:       g('hAssets',5000),
+    total_liabs:        g('hLiabs',4500),
+    tier1_capital:      g('hTier1',500),
+    eve_delta_worst:    g('hEVE',0),
+    eve_limit_pct:      g('hEVELimit',15),
+    nii_base:           g('hNIIBase',500),
+    nii_worst_delta:    g('hNIIDelta',0),
+    base_rate:          g('hBaseRate',42.5),
+    hedge_tenors:       [1,2,3,5,10],
+  };
+  try {
+    const resp = await fetch('/api/hedge/recommend', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderHedge(d);
+  } catch(err) {
+    document.getElementById('hedgeResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderHedge(d) {
+  const dirCls = d.hedge_direction==='receive-fixed' ? 'receive-fixed' : 'pay-fixed';
+  const dirLabel = d.hedge_direction==='receive-fixed'
+    ? 'Receive-Fixed IRS (liability-sensitive — faiz riskini kapa)'
+    : 'Pay-Fixed IRS (asset-sensitive — faiz düşüşüne karşı koru)';
+
+  // Tenor tablosu
+  const rows = d.tenor_hedges.map(h => {
+    const isOpt = d.optimal_tenor?.tenor_yr === h.tenor_yr;
+    return `<tr class="${isOpt?'optimal':''}">
+      <td><strong style="color:${isOpt?'var(--accent)':'var(--text)'}">${h.tenor_yr}Y ${isOpt?'★':''}</strong></td>
+      <td class="r"><strong>${h.notional_m.toFixed(0)}M</strong></td>
+      <td class="r">${h.swap_rate_approx.toFixed(2)}%</td>
+      <td class="r" style="color:var(--green)">${h.annual_nim_m.toFixed(1)}M</td>
+      <td class="r" style="color:var(--accent)">${h.eve_improvement_pct.toFixed(1)}%</td>
+      <td class="r" style="color:var(--text-muted)">${(h.dv01_m*1000).toFixed(2)}K</td>
+    </tr>`;
+  }).join('');
+
+  // NII hedge tablosu
+  const niiRows = d.nii_hedges.map(h => `
+    <div class="nii-row">
+      <span style="color:var(--text)">${h.label}</span>
+      <span style="font-family:var(--font-mono);color:var(--green)">${h.nii_coverage_pct.toFixed(1)}% coverage</span>
+      <span style="font-size:0.62rem;color:var(--text-muted)">${h.comment}</span>
+    </div>`).join('');
+
+  // EVE breach fix
+  const eveBreachHTML = d.eve_breach_fix ? `
+    <div class="breach-card">
+      <div style="font-size:0.7rem;font-weight:600;color:var(--red);margin-bottom:0.3rem">⚠️ EVE IRRBB Breach Riski</div>
+      <div class="metric-row"><span class="metric-label">Mevcut ΔEVE/Tier1</span><span class="metric-val" style="color:var(--red)">${d.eve_breach_fix.current_eve_pct}%</span></div>
+      <div class="metric-row"><span class="metric-label">Hedef ΔEVE/Tier1</span><span class="metric-val" style="color:var(--green)">${d.eve_breach_fix.target_eve_pct}%</span></div>
+      <div class="metric-row" style="border:none"><span class="metric-label">Önerilen aksiyon</span></div>
+      <div style="font-size:0.7rem;color:var(--text-dim);margin-top:0.3rem">${d.eve_breach_fix.action}</div>
+    </div>` : '';
+
+  document.getElementById('hedgeResults').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Duration Gap</div><div class="stat-value ${d.duration_gap<0?'negative':'positive'}">${d.duration_gap>0?'+':''}${d.duration_gap}Y</div><div class="stat-sub">${d.duration_gap<0?'Liability-sensitive':'Asset-sensitive'}</div></div>
+      <div class="stat-box"><div class="stat-label">Hedef Gap</div><div class="stat-value">${d.target_gap}Y</div><div class="stat-sub">Kapatılacak: ${Math.abs(d.gap_to_close).toFixed(2)}Y</div></div>
+      <div class="stat-box"><div class="stat-label">Hedge Yönü</div><div><span class="direction-badge ${dirCls}">${d.hedge_direction.toUpperCase()}</span></div></div>
+      <div class="stat-box"><div class="stat-label">EVE / Tier1</div><div class="stat-value ${d.eve_pct>10?'negative':''}">${d.eve_pct}%</div><div class="stat-sub">Limit %15</div></div>
+      <div class="stat-box"><div class="stat-label">NII-at-Risk</div><div class="stat-value ${d.nii_pct>5?'negative':''}">${d.nii_pct}%</div></div>
+    </div>
+
+    <div class="card mb-2">
+      <div class="flex-between mb-2">
+        <div class="card-title" style="margin:0">${dirLabel}</div>
+        ${d.optimal_tenor ? `<span style="font-size:0.68rem;color:var(--accent)">★ Optimal tenor: ${d.optimal_tenor.tenor_yr}Y — ${d.optimal_tenor.notional_m.toFixed(0)}M notional</span>` : ''}
+      </div>
+      ${eveBreachHTML}
+      <div style="overflow-x:auto">
+        <table class="hedge-table">
+          <thead><tr>
+            <th>Tenor</th><th class="r">Notional</th><th class="r">Swap Rate</th>
+            <th class="r">Yıllık NIM Etkisi</th><th class="r">EVE İyileşme</th><th class="r">DV01</th>
+          </tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.5rem">
+        ★ Optimal tenor: EVE iyileştirme verimliliği (EVE_iyileşme / notional) en yüksek olan. Swap rate = politika faizi − tenor×0.15 (yaklaşık).
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">NII Koruma Analizi</div>
+        <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.5rem">
+          NII-at-Risk: <strong style="color:var(--text)">${d.nii_pct}%</strong> — 
+          En iyi NII koruması: <strong style="color:var(--green)">${d.best_nii_hedge?.label}</strong>
+        </div>
+        ${niiRows}
+      </div>
+      <div class="card">
+        <div class="card-title">Notional vs Tenor</div>
+        <div class="chart-box" id="chartHedgeTenor" style="height:200px"></div>
+      </div>
+    </div>`;
+
+  renderHedgeChart(d);
+}
+
+function renderHedgeChart(d) {
+  const tenors    = d.tenor_hedges.map(h=>h.tenor_yr+'Y');
+  const notionals = d.tenor_hedges.map(h=>h.notional_m);
+  const eveImpr   = d.tenor_hedges.map(h=>h.eve_improvement_pct);
+  Plotly.newPlot('chartHedgeTenor', [
+    { type:'bar',  x:tenors, y:notionals, name:'Notional (M)', marker:{color:'#2563eb'}, yaxis:'y' },
+    { type:'scatter', x:tenors, y:eveImpr, name:'EVE İyileşme (%)',
+      mode:'lines+markers', line:{color:'#10b981',width:2}, marker:{size:7}, yaxis:'y2' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:35,l:55,r:45},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233'},
+    yaxis:{title:{text:'Notional (M)',font:{size:9}},gridcolor:'#1e2233'},
+    yaxis2:{overlaying:'y',side:'right',title:{text:'EVE İyileşme (%)',font:{size:9}},showgrid:false},
+    legend:{font:{size:8},bgcolor:'transparent'},
+  },{displayModeBar:false,responsive:true});
+}
+
+async function prefillHedge() {
+  try {
+    const r = await fetch('/api/prefill/hedge');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const fields = d.fields || {};
+    let filled = 0;
+    Object.entries(fields).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el && val !== null && val !== undefined) { el.value = val; filled++; }
+    });
+    const sourced = d.sourced || [];
+    const msg = filled > 0
+      ? `✓ ${filled} alan dolduruldu — ${sourced.join(', ')}`
+      : '⚠ Henüz hesaplama yok — önce NII ve EVE hesaplayın';
+    const t = document.createElement('div');
+    t.textContent = msg;
+    t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;
+      background:${filled>0?'var(--green-dim)':'var(--gold-dim)'};
+      color:${filled>0?'var(--green)':'var(--gold)'};
+      border:1px solid ${filled>0?'rgba(16,185,129,.3)':'rgba(245,158,11,.3)'};
+      border-radius:var(--radius);padding:.55rem 1rem;font-size:.75rem;font-family:var(--font-mono)`;
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 3000);
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+</script>
+{% endblock %}

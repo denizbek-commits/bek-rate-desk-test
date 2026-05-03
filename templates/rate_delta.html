@@ -1,0 +1,400 @@
+{% extends 'base.html' %}
+{% block title %}Rate Delta — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.heatmap-grid { display:grid; grid-template-columns:130px repeat(3,1fr); gap:2px; }
+.hm-header { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); text-align:center; padding:0.28rem 0; }
+.hm-label  { font-size:0.68rem; display:flex; align-items:center; gap:4px; padding-right:4px; }
+.hm-cell   { border-radius:4px; padding:0.4rem 0.3rem; text-align:center; font-family:var(--font-mono); font-size:0.72rem; font-weight:500; transition:background 0.3s; }
+.chart-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem; }
+.regime-badge { display:inline-flex; align-items:center; gap:0.4rem; padding:0.32rem 0.8rem; border-radius:var(--radius); font-family:var(--font-head); font-size:0.73rem; font-weight:700; letter-spacing:0.03em; }
+.bear-steep { background:rgba(239,68,68,.15);  color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.bear-flat  { background:rgba(245,158,11,.15); color:var(--gold);   border:1px solid rgba(245,158,11,.3); }
+.bull-steep { background:rgba(16,185,129,.15); color:var(--green);  border:1px solid rgba(16,185,129,.3); }
+.bull-flat  { background:rgba(37,99,235,.15);  color:var(--accent); border:1px solid rgba(37,99,235,.3); }
+.mixed      { background:var(--panel);         color:var(--text-muted); border:1px solid var(--border); }
+.tighten    { background:rgba(239,68,68,.15);  color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.easing     { background:rgba(16,185,129,.15); color:var(--green);  border:1px solid rgba(16,185,129,.3); }
+.onhold     { background:rgba(37,99,235,.15);  color:var(--accent); border:1px solid rgba(37,99,235,.3); }
+.pressure   { background:rgba(245,158,11,.15); color:var(--gold);   border:1px solid rgba(245,158,11,.3); }
+.section-label { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); margin-bottom:0.5rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Rate Delta</h1>
+      <p>🇺🇸 US Treasury — heatmap, eğri rejimi, TLT &nbsp;|&nbsp; 🇹🇷 TCMB — faiz delta, rejim, TLREF spread</p>
+    </div>
+    <button class="btn btn-primary" onclick="loadData()">⟳ Yenile</button>
+  </div>
+</div>
+
+<div id="mainContent">
+  <div class="loading" style="padding:3rem"><div class="spinner"></div> FRED ve TCMB EVDS verisi çekiliyor...</div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+async function loadData() {
+  document.getElementById('mainContent').innerHTML =
+    '<div class="loading" style="padding:3rem"><div class="spinner"></div> FRED ve TCMB EVDS verisi çekiliyor...</div>';
+  try {
+    const resp = await fetch('/api/rate-delta/data');
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderAll(d);
+  } catch(err) {
+    document.getElementById('mainContent').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><h2>Hata</h2><p>${err.message}</p></div>`;
+  }
+}
+
+function cellStyle(v) {
+  if (v == null) return 'background:var(--panel);color:var(--text-muted)';
+  const intensity = Math.round(Math.min(Math.abs(v), 0.5) / 0.5 * 155);
+  return v > 0
+    ? `background:rgba(239,68,68,${(intensity/255).toFixed(2)});color:${intensity>90?'#fff':'var(--red)'}`
+    : `background:rgba(16,185,129,${(intensity/255).toFixed(2)});color:${intensity>90?'#fff':'var(--green)'}`;
+}
+
+function trCellStyle(v) {
+  // TR heatmap — bps değil, % olduğu için threshold farklı
+  if (v == null) return 'background:var(--panel);color:var(--text-muted)';
+  const intensity = Math.round(Math.min(Math.abs(v), 2.0) / 2.0 * 155);
+  return v > 0
+    ? `background:rgba(239,68,68,${(intensity/255).toFixed(2)});color:${intensity>90?'#fff':'var(--red)'}`
+    : `background:rgba(16,185,129,${(intensity/255).toFixed(2)});color:${intensity>90?'#fff':'var(--green)'}`;
+}
+
+function regimeCls(r) {
+  if (!r) return 'onhold';
+  const u = r.toUpperCase();
+  if (u.includes('BEAR') && u.includes('STEEP')) return 'bear-steep';
+  if (u.includes('BEAR') && u.includes('FLAT'))  return 'bear-flat';
+  if (u.includes('BULL') && u.includes('STEEP')) return 'bull-steep';
+  if (u.includes('BULL') && u.includes('FLAT'))  return 'bull-flat';
+  if (u.includes('TIGHT') || u.includes('SIKILA')) return 'tighten';
+  if (u.includes('EASE')  || u.includes('GEVŞE'))  return 'easing';
+  if (u.includes('PRESSURE') || u.includes('BASI')) return 'pressure';
+  return 'mixed';
+}
+
+function renderAll(d) {
+  const tr     = d.tr     || {};
+  const trR    = tr.regime || {};
+  const windows   = ['5d','10d','20d'];         // US — günlük Treasury verisi
+  const trWindows = ['1m','3m','6m','1y'];       // TR — haftalık PPK kararı verisi
+
+  // ── US Heatmap ──────────────────────────────────────────────────────────
+  const usTenors = ['2Y','5Y','10Y','20Y','30Y'];
+  const usHmRows = usTenors.map(t => {
+    const cells = windows.map(w => {
+      const v = d.heatmap?.[t]?.[w];
+      const lbl = v != null ? (v>=0?'+':'')+v.toFixed(3)+'%' : '—';
+      return `<div class="hm-cell" style="${cellStyle(v)}">${lbl}</div>`;
+    }).join('');
+    const cur = d.current_rates?.[t];
+    return `<div class="hm-label">
+      <span style="color:var(--green);font-weight:500">${t}</span>
+      ${cur != null ? `<span style="font-size:0.6rem;color:var(--accent)">${cur}%</span>` : ''}
+    </div>${cells}`;
+  }).join('');
+
+  const usRegime  = d.regime || 'Unknown';
+  const usSpread  = d.spread_10y_2y;
+
+  // ── TR Heatmap ──────────────────────────────────────────────────────────
+  const trHm      = tr.heatmap      || {};
+  const trCurrent = tr.current_rates || {};
+  const trLabels  = Object.keys(trHm);
+  const trHmRows  = trLabels.map(label => {
+    const cells = trWindows.map(w => {
+      const v = trHm[label]?.[w];
+      const lbl = v != null ? (v>=0?'+':'')+v.toFixed(2)+'%' : '—';
+      return `<div class="hm-cell" style="${trCellStyle(v)}">${lbl}</div>`;
+    }).join('');
+    const cur = trCurrent[label];
+    return `<div class="hm-label">
+      <span style="color:var(--gold);font-weight:500;font-size:0.65rem">${label}</span>
+      ${cur != null ? `<span style="font-size:0.58rem;color:var(--gold)">${cur}%</span>` : ''}
+    </div>${cells}`;
+  }).join('');
+
+  const trRegime     = trR.regime        || 'Bilinmiyor';
+  const tlrefPremium = trR.tlref_premium;
+  const trSpreadNow  = tr.spread_series?.length
+    ? tr.spread_series[tr.spread_series.length-1]?.value
+    : tlrefPremium;
+
+  document.getElementById('mainContent').innerHTML = `
+
+    <!-- ══ US BÖLÜMÜ ══ -->
+    <div class="section-label">🇺🇸 United States — US Treasury Rate Delta</div>
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="flex-between mb-2">
+          <div class="card-title" style="margin:0">Rate Delta Heatmap</div>
+          <span style="font-size:0.6rem;color:var(--text-muted)">kırmızı=yükseliş · yeşil=düşüş</span>
+        </div>
+        <div class="heatmap-grid">
+          <div></div>${windows.map(w=>`<div class="hm-header">${w}</div>`).join('')}
+          ${usHmRows}
+        </div>
+      </div>
+      <div class="card">
+        <div class="flex-between mb-2">
+          <div class="card-title" style="margin:0">Eğri Rejimi — 10Y−2Y Spread</div>
+          <div class="regime-badge ${regimeCls(usRegime)}">${usRegime}</div>
+        </div>
+        <div style="display:flex;gap:1rem;align-items:center;flex-wrap:wrap;margin-bottom:0.5rem">
+          <span style="font-size:0.72rem;color:var(--text-muted)">Spot: <strong style="color:var(--text)">${usSpread!=null?(usSpread>=0?'+':'')+usSpread+'%':'—'}</strong></span>
+          ${d.forward_spread!=null?`<span style="font-size:0.72rem;color:var(--text-muted)">1Y Fwd: <strong style="color:var(--accent)">${d.forward_spread>=0?'+':''}${d.forward_spread}%</strong></span>`:''}
+          ${d.spread_z_stats?.z!=null?`<span style="font-size:0.72rem;color:var(--text-muted)">Z-score: <strong style="color:${Math.abs(d.spread_z_stats.z)>2?'var(--red)':Math.abs(d.spread_z_stats.z)<0.5?'var(--green)':'var(--gold)'}">${d.spread_z_stats.z>=0?'+':''}${d.spread_z_stats.z}σ</strong></span>`:''}
+        </div>
+        <div class="chart-box" id="chartUSSpread" style="height:175px"></div>
+      </div>
+    </div>
+
+    <!-- Z-score panel -->
+    <div class="card mb-2">
+      <div class="flex-between mb-1">
+        <div class="card-title" style="margin:0">🇺🇸 10Y−2Y Spread — Z-score &amp; Sigma Bantları</div>
+        ${d.spread_z_stats?.signal?`<span class="regime-badge ${
+            d.spread_z_stats.signal==='breakout_high'?'bear-steep':
+            d.spread_z_stats.signal==='breakout_low'?'bull-steep':
+            d.spread_z_stats.signal==='mean_reverting'?'onhold':'mixed'
+          }" style="font-size:0.6rem">${
+            d.spread_z_stats.signal==='breakout_high'?'Spread Genişledi — Geri Dönüş İzle':
+            d.spread_z_stats.signal==='breakout_low'?'Spread Daraldı — Potansiyel Kırılım':
+            d.spread_z_stats.signal==='mean_reverting'?'Ortalamada — Nötr':
+            'Gözlem Bölgesi'
+          }</span>`:''}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+        <div class="chart-box" id="chartSpreadZBands" style="height:190px"></div>
+        <div class="chart-box" id="chartZScore" style="height:190px"></div>
+      </div>
+      ${d.spread_z_stats?.mean!=null?`
+      <div style="display:flex;gap:1.5rem;flex-wrap:wrap;margin-top:0.4rem;font-size:0.62rem;color:var(--text-muted)">
+        <span>Ort: <strong style="color:var(--text)">${d.spread_z_stats.mean>=0?'+':''}${d.spread_z_stats.mean}%</strong></span>
+        <span>±1σ: <strong style="color:var(--green)">[${d.spread_z_stats.l1}% , ${d.spread_z_stats.u1}%]</strong></span>
+        <span>±2σ: <strong style="color:var(--gold)">[${d.spread_z_stats.l2}% , ${d.spread_z_stats.u2}%]</strong></span>
+        <span>Pencere: <strong>${d.spread_z_stats.window}g</strong></span>
+        ${d.forward_spread!=null?`<span>Forward−Spot farkı: <strong style="color:var(--accent)">${(d.forward_spread-d.spread_10y_2y)>=0?'+':''}${(d.forward_spread-d.spread_10y_2y).toFixed(3)}%</strong></span>`:''}
+      </div>`:''}
+    </div>
+
+    <!-- TLT -->
+    <div class="card mb-2">
+      <div class="card-title">🇺🇸 TLT — Momentum / Dönüş Sinyalleri</div>
+      <div class="chart-box" id="chartTLT" style="height:200px"></div>
+    </div>
+
+    <!-- ══ TR BÖLÜMÜ ══ -->
+    <div class="section-label" style="margin-top:0.25rem">🇹🇷 Türkiye — TCMB Faiz Delta &amp; Rejim</div>
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="flex-between mb-2">
+          <div class="card-title" style="margin:0">TR Faiz Delta Heatmap</div>
+          <span style="font-size:0.6rem;color:var(--text-muted)">${tr.evds_live ? '🟢 TCMB EVDS · canlı' : '🟡 PPK Karar Takvimi · fallback'}</span>
+        </div>
+        <div class="heatmap-grid" style="grid-template-columns:130px repeat(4,1fr)">
+          <div></div>${trWindows.map(w=>`<div class="hm-header">${w}</div>`).join('')}
+          ${trHmRows}
+        </div>
+      </div>
+      <div class="card">
+        <div class="flex-between mb-2">
+          <div class="card-title" style="margin:0">TR Faiz Rejimi</div>
+          <div class="regime-badge ${regimeCls(trRegime)}">${trRegime}</div>
+        </div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:0.6rem">
+          TLREF − Politika Farkı: <strong style="color:${trSpreadNow>0?'var(--gold)':'var(--green)'}">${trSpreadNow!=null?(trSpreadNow>=0?'+':'')+trSpreadNow+'%':'—'}</strong>
+        </div>
+        <div class="chart-box" id="chartTRSpread" style="height:168px"></div>
+      </div>
+    </div>
+
+    <!-- TR Politika + TLREF Tarihsel -->
+    <div class="card mb-2">
+      <div class="card-title">🇹🇷 Politika Faizi &amp; TLREF — Tarihsel Seyir</div>
+      <div class="chart-box" id="chartTRHistory" style="height:200px"></div>
+      <div style="font-size:0.6rem;color:var(--text-muted);margin-top:0.35rem">
+        Kaynak: ${tr.source||'TCMB'} — ${tr.fetched_at||''}. Haftalık frekans.
+      </div>
+    </div>`;
+
+  renderCharts(d);
+}
+
+function renderCharts(d) {
+  const tr = d.tr || {};
+  const BL = baseLyt;
+
+  // ── 1. US 10Y-2Y Spread with rolling mean ────────────────────────────────
+  if (d.spread_series?.length) {
+    const ss    = d.spread_series;
+    const dates = ss.map(p=>p.date);
+    const vals  = ss.map(p=>p.value);
+    const means = ss.map(p=>p.mean);
+    const hasZ  = ss.some(p=>p.mean!=null);
+
+    const traces = [
+      { type:'scatter',x:dates,y:vals,mode:'lines',name:'10Y−2Y Spread',
+        line:{color:'#10b981',width:2} },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(0),mode:'lines',
+        line:{color:'#64748b',dash:'dot',width:1},showlegend:false },
+    ];
+    if (hasZ) traces.push({
+      type:'scatter',x:dates,y:means,mode:'lines',name:'Ort (252g)',
+      line:{color:'#f59e0b',width:1.2,dash:'dot'},
+    });
+    Plotly.newPlot('chartUSSpread', traces,
+      {...BL('Spread (%)'),legend:{font:{size:8},bgcolor:'transparent'}},
+      {displayModeBar:false,responsive:true});
+  }
+
+  // ── 1b. Sigma bantları (ayrı panel) ──────────────────────────────────────
+  if (d.spread_series?.length && d.spread_series.some(p=>p.u2!=null)) {
+    const ss    = d.spread_series.filter(p=>p.u2!=null);
+    const dates = ss.map(p=>p.date);
+    const vals  = ss.map(p=>p.value);
+    const u2    = ss.map(p=>p.u2);
+    const l2    = ss.map(p=>p.l2);
+    const u1    = ss.map(p=>p.u1);
+    const l1    = ss.map(p=>p.l1);
+    const means = ss.map(p=>p.mean);
+
+    Plotly.newPlot('chartSpreadZBands', [
+      { type:'scatter',x:[...dates,...[...dates].reverse()],
+        y:[...u2,...[...l2].reverse()],fill:'toself',
+        fillcolor:'rgba(245,158,11,0.08)',line:{width:0},showlegend:false,name:'±2σ' },
+      { type:'scatter',x:[...dates,...[...dates].reverse()],
+        y:[...u1,...[...l1].reverse()],fill:'toself',
+        fillcolor:'rgba(16,185,129,0.12)',line:{width:0},showlegend:false,name:'±1σ' },
+      { type:'scatter',x:dates,y:u2,mode:'lines',name:'+2σ',
+        line:{color:'rgba(245,158,11,0.6)',width:1,dash:'dot'} },
+      { type:'scatter',x:dates,y:l2,mode:'lines',name:'−2σ',
+        line:{color:'rgba(245,158,11,0.6)',width:1,dash:'dot'} },
+      { type:'scatter',x:dates,y:u1,mode:'lines',name:'+1σ',
+        line:{color:'rgba(16,185,129,0.7)',width:1,dash:'dash'} },
+      { type:'scatter',x:dates,y:l1,mode:'lines',name:'−1σ',
+        line:{color:'rgba(16,185,129,0.7)',width:1,dash:'dash'} },
+      { type:'scatter',x:dates,y:means,mode:'lines',name:'Ort',
+        line:{color:'#f59e0b',width:1.5} },
+      { type:'scatter',x:dates,y:vals,mode:'lines',name:'Spread',
+        line:{color:'#10b981',width:2} },
+    ], {...BL('Spread (%)'),legend:{font:{size:7},bgcolor:'transparent',orientation:'h',y:-0.25}},
+    {displayModeBar:false,responsive:true});
+  } else {
+    document.getElementById('chartSpreadZBands').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.68rem;color:var(--text-muted)">Yeterli tarihsel veri yok — FRED bağlantısı gerekli</div>';
+  }
+
+  // ── 1c. Z-score serisi ────────────────────────────────────────────────────
+  if (d.spread_series?.length && d.spread_series.some(p=>p.z!=null)) {
+    const ss    = d.spread_series.filter(p=>p.z!=null);
+    const dates = ss.map(p=>p.date);
+    const zvals = ss.map(p=>p.z);
+    const colors = zvals.map(z=>z> 2?'#ef4444':z<-2?'#10b981':z>1?'#f59e0b':z<-1?'#6ee7b7':'#64748b');
+
+    Plotly.newPlot('chartZScore', [
+      { type:'scatter',x:dates,y:Array(dates.length).fill(2),mode:'lines',
+        line:{color:'rgba(239,68,68,0.4)',dash:'dot',width:1},showlegend:false },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(-2),mode:'lines',
+        line:{color:'rgba(16,185,129,0.4)',dash:'dot',width:1},showlegend:false },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(1),mode:'lines',
+        line:{color:'rgba(245,158,11,0.3)',dash:'dot',width:1},showlegend:false },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(-1),mode:'lines',
+        line:{color:'rgba(245,158,11,0.3)',dash:'dot',width:1},showlegend:false },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(0),mode:'lines',
+        line:{color:'#334155',width:1},showlegend:false },
+      { type:'bar',x:dates,y:zvals,marker:{color:colors,opacity:0.8},name:'Z-score' },
+    ], {...BL('Z-score (σ)'),legend:{font:{size:8},bgcolor:'transparent'},
+        yaxis:{...BL('Z-score (σ)').yaxis, ticksuffix:'σ', zeroline:false}},
+    {displayModeBar:false,responsive:true});
+  } else {
+    document.getElementById('chartZScore').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.68rem;color:var(--text-muted)">FRED bağlantısı gerekli</div>';
+  }
+
+  // ── 2. TLT ───────────────────────────────────────────────────────────────
+  if (d.tlt_data?.length) {
+    const dates  = d.tlt_data.map(p=>p.date);
+    const prices = d.tlt_data.map(p=>p.price);
+    const redSig   = (d.tlt_signals||[]).filter(s=>s.type==='red');
+    const greenSig = (d.tlt_signals||[]).filter(s=>s.type==='green');
+    Plotly.newPlot('chartTLT', [
+      { type:'scatter',x:dates,y:prices,mode:'lines',line:{color:'#94a3b8',width:1.5},name:'TLT' },
+      { type:'scatter',x:redSig.map(s=>s.date),y:redSig.map(s=>s.price),mode:'markers',
+        marker:{color:'#ef4444',size:10,symbol:'triangle-down'},name:'Potansiyel tepe' },
+      { type:'scatter',x:greenSig.map(s=>s.date),y:greenSig.map(s=>s.price),mode:'markers',
+        marker:{color:'#10b981',size:10,symbol:'triangle-up'},name:'Potansiyel dip' },
+    ], {...BL('Fiyat'),legend:{font:{size:8},bgcolor:'transparent'}},
+    {displayModeBar:false,responsive:true});
+  }
+
+  // ── 3. TR TLREF-Politika Spread serisi ───────────────────────────────────
+  const trSpread = tr.spread_series || [];
+  if (trSpread.length) {
+    const dates = trSpread.map(p=>p.date);
+    const vals  = trSpread.map(p=>p.value);
+    Plotly.newPlot('chartTRSpread', [
+      { type:'scatter',x:dates,y:vals,mode:'lines',
+        line:{color:'#f59e0b',width:2},fill:'tozeroy',fillcolor:'rgba(245,158,11,0.07)' },
+      { type:'scatter',x:dates,y:Array(dates.length).fill(0),mode:'lines',
+        line:{color:'#64748b',dash:'dot',width:1},showlegend:false },
+    ], BL('TLREF − Politika (%)'), {displayModeBar:false,responsive:true});
+  } else {
+    document.getElementById('chartTRSpread').innerHTML =
+      '<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.68rem;color:var(--text-muted)">Tarihsel EVDS verisi mevcut değil — local makinede aktif olacak</div>';
+  }
+
+  // ── 4. TR Politika + TLREF tarihsel ──────────────────────────────────────
+  const polS   = tr.policy_series || [];
+  const tlrefS = tr.tlref_series  || [];
+  const trHistTraces = [];
+  if (polS.length) {
+    trHistTraces.push({
+      type:'scatter', x:polS.map(p=>p.date), y:polS.map(p=>p.value),
+      mode:'lines', name:'Politika Faizi',
+      line:{color:'#f59e0b',width:2.5},
+      fill:'tozeroy', fillcolor:'rgba(245,158,11,0.05)',
+    });
+  }
+  if (tlrefS.length) {
+    trHistTraces.push({
+      type:'scatter', x:tlrefS.map(p=>p.date), y:tlrefS.map(p=>p.value),
+      mode:'lines', name:'TLREF',
+      line:{color:'#fbbf24',width:1.8,dash:'dot'},
+    });
+  }
+  if (trHistTraces.length) {
+    Plotly.newPlot('chartTRHistory', trHistTraces,
+      {...BL('Faiz (%)'), legend:{font:{size:9},bgcolor:'transparent'}},
+      {displayModeBar:false,responsive:true});
+  } else {
+    document.getElementById('chartTRHistory').innerHTML =
+      `<div style="display:flex;align-items:center;justify-content:center;height:100%;font-size:0.68rem;color:var(--text-muted);flex-direction:column;gap:0.5rem">
+        <span>Tarihsel EVDS verisi sandbox'tan erişilemiyor</span>
+        <span style="font-size:0.82rem;font-family:var(--font-mono)">Politika: <strong style="color:var(--gold)">${(d.tr||{}).policy_rate??'—'}%</strong> &nbsp;|&nbsp; TLREF: <strong style="color:var(--gold)">${(d.tr||{}).tlref??'—'}%</strong></span>
+      </div>`;
+  }
+}
+
+function baseLyt(ytitle) {
+  return {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:35,l:50,r:10},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233',tickfont:{size:8}},
+    yaxis:{gridcolor:'#1e2233',title:{text:ytitle,font:{size:9}},ticksuffix:'%'},
+  };
+}
+
+loadData();
+</script>
+{% endblock %}

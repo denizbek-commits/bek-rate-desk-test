@@ -1,0 +1,325 @@
+{% extends 'base.html' %}
+{% block title %}Scenarios — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.sc-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:0.75rem; }
+.sc-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.85rem 1rem; display:flex; flex-direction:column; gap:0.35rem; transition:border-color 0.15s; }
+.sc-card:hover { border-color:var(--accent); }
+.sc-name { font-size:0.8rem; font-weight:600; color:var(--text); }
+.sc-desc { font-size:0.65rem; color:var(--text-muted); line-height:1.5; }
+.sc-footer { display:flex; align-items:center; justify-content:space-between; margin-top:0.25rem; }
+.cat-pill { font-size:0.58rem; padding:2px 7px; border-radius:3px; font-weight:600; }
+.cat-Base    { background:rgba(37,99,235,.15);  color:var(--accent); }
+.cat-Stress  { background:rgba(239,68,68,.15);  color:var(--red); }
+.cat-Hedged  { background:rgba(16,185,129,.15); color:var(--green); }
+.cat-Custom  { background:rgba(245,158,11,.15); color:var(--gold); }
+.asset-row { display:flex; justify-content:space-between; font-size:0.68rem; padding:0.28rem 0; border-bottom:1px solid var(--border-soft); }
+.asset-label { color:var(--text-muted); }
+.asset-val   { font-family:var(--font-mono); font-weight:500; }
+.add-form { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.add-form .full { grid-column:span 2; }
+.item-row { display:grid; grid-template-columns:1fr 65px 60px 70px 70px 22px; gap:0.3rem; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.3rem 0.5rem; font-size:0.65rem; margin-bottom:0.25rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Scenario Library</h1>
+      <p>Kayıtlı bilanço senaryoları — tek tıkla yükle, karşılaştır, düzenle</p>
+    </div>
+    <button class="btn btn-primary" onclick="showSaveModal()">+ Yeni Senaryo Kaydet</button>
+  </div>
+</div>
+
+<div id="scenarioGrid">
+  <div class="loading" style="padding:2rem"><div class="spinner"></div> Senaryolar yükleniyor...</div>
+</div>
+
+<!-- Scenario Detail Modal -->
+<div id="detailModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:680px;max-height:85vh;overflow-y:auto">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0" id="modalTitle">Senaryo Detayı</div>
+      <button class="btn btn-ghost" onclick="closeModal('detailModal')">✕</button>
+    </div>
+    <div id="modalBody"></div>
+    <div style="display:flex;gap:0.5rem;margin-top:1rem">
+      <button class="btn btn-primary"  id="modalRunNII"  onclick="runFromModal('nii')">▶ NII Analizi Çalıştır</button>
+      <button class="btn btn-ghost"    id="modalRunBrief" onclick="runFromModal('brief')">📊 Morning Brief'e Gönder</button>
+      <button class="btn btn-ghost"    onclick="closeModal('detailModal')">Kapat</button>
+    </div>
+  </div>
+</div>
+
+<!-- Save Modal -->
+<div id="saveModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:1000;align-items:center;justify-content:center">
+  <div style="background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:1.5rem;width:640px;max-height:85vh;overflow-y:auto">
+    <div class="flex-between mb-2">
+      <div class="card-title" style="margin:0">Yeni Senaryo Kaydet</div>
+      <button class="btn btn-ghost" onclick="closeModal('saveModal')">✕</button>
+    </div>
+
+    <div class="add-form" style="margin-bottom:0.75rem">
+      <div class="form-group full"><label class="form-label">Senaryo Adı</label><input class="form-input" id="sc-name" placeholder="e.g. Q2 2026 Stres Testi"/></div>
+      <div class="form-group full"><label class="form-label">Açıklama</label><input class="form-input" id="sc-desc" placeholder="Kısa açıklama"/></div>
+      <div class="form-group">
+        <label class="form-label">Kategori</label>
+        <select class="form-select" id="sc-cat">
+          <option value="Base">Base</option><option value="Stress">Stress</option>
+          <option value="Hedged">Hedged</option><option value="Custom">Custom</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Base Rate (%)</label><input class="form-input" id="sc-base" type="number" step="0.25" value="42.5"/></div>
+    </div>
+
+    <div style="display:flex;gap:1rem">
+      <div style="flex:1">
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.4rem">Varlıklar</div>
+        <div id="assetList" style="max-height:200px;overflow-y:auto;margin-bottom:0.4rem"></div>
+        <div class="add-form">
+          <div class="form-group full"><label class="form-label">Ad</label><input class="form-input" id="a-name" placeholder="Floating Loans"/></div>
+          <div class="form-group"><label class="form-label">Tutar (M)</label><input class="form-input" id="a-amt" type="number"/></div>
+          <div class="form-group"><label class="form-label">Faiz (%)</label><input class="form-input" id="a-rate" type="number" step="0.1"/></div>
+          <div class="form-group"><label class="form-label">Reprice (ay)</label><input class="form-input" id="a-rp" type="number" value="12"/></div>
+          <div class="form-group">
+            <label class="form-label">Tip</label>
+            <select class="form-select" id="a-type"><option value="fixed">Fixed</option><option value="floating">Floating</option></select>
+          </div>
+        </div>
+        <button class="btn btn-ghost w-full" onclick="addItem('asset')">+ Varlık Ekle</button>
+      </div>
+      <div style="flex:1">
+        <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.4rem">Yükümlülükler</div>
+        <div id="liabList" style="max-height:200px;overflow-y:auto;margin-bottom:0.4rem"></div>
+        <div class="add-form">
+          <div class="form-group full"><label class="form-label">Ad</label><input class="form-input" id="l-name" placeholder="Time Deposits 3M"/></div>
+          <div class="form-group"><label class="form-label">Tutar (M)</label><input class="form-input" id="l-amt" type="number"/></div>
+          <div class="form-group"><label class="form-label">Faiz (%)</label><input class="form-input" id="l-rate" type="number" step="0.1"/></div>
+          <div class="form-group"><label class="form-label">Reprice (ay)</label><input class="form-input" id="l-rp" type="number" value="3"/></div>
+          <div class="form-group">
+            <label class="form-label">Tip</label>
+            <select class="form-select" id="l-type"><option value="fixed">Fixed</option><option value="floating">Floating</option></select>
+          </div>
+        </div>
+        <button class="btn btn-ghost w-full" onclick="addItem('liab')">+ Yükümlülük Ekle</button>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:0.5rem;margin-top:1rem">
+      <button class="btn btn-primary" onclick="saveScenario()">💾 Kaydet</button>
+      <button class="btn btn-ghost"   onclick="closeModal('saveModal')">İptal</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let saveAssets = [];
+let saveLiabs  = [];
+let activeScenario = null;
+
+async function loadScenarios() {
+  try {
+    const resp = await fetch('/api/scenarios');
+    const list = await resp.json();
+    renderGrid(list);
+  } catch(err) {
+    document.getElementById('scenarioGrid').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderGrid(list) {
+  const cats   = ['Base','Stress','Hedged','Custom'];
+  let html = '';
+  cats.forEach(cat => {
+    const items = list.filter(s => s.category === cat);
+    if (!items.length) return;
+    html += `<div style="margin-bottom:1.25rem">
+      <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.5rem">${cat} Senaryolar</div>
+      <div class="sc-grid">`;
+    items.forEach(s => {
+      html += `<div class="sc-card" onclick="openScenario('${s.id}')">
+        <div class="sc-name">${s.name}</div>
+        <div class="sc-desc">${s.description}</div>
+        <div class="sc-footer">
+          <span class="cat-pill cat-${s.category}">${s.category}</span>
+          <div style="display:flex;gap:0.35rem">
+            ${!s.builtin ? `<button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 6px" onclick="event.stopPropagation();deleteScenario('${s.id}')">🗑</button>` : ''}
+            <button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 6px" onclick="event.stopPropagation();openScenario('${s.id}')">Detay →</button>
+          </div>
+        </div>
+      </div>`;
+    });
+    html += `</div></div>`;
+  });
+  document.getElementById('scenarioGrid').innerHTML = html || '<div class="coming-soon"><p>Henüz senaryo yok</p></div>';
+}
+
+async function openScenario(id) {
+  try {
+    const resp = await fetch(`/api/scenarios/${id}`);
+    const sc   = await resp.json();
+    activeScenario = sc;
+    document.getElementById('modalTitle').textContent = sc.name;
+
+    const sd = sc.data || {};
+    const assets = sd.assets || [];
+    const liabs  = sd.liabilities || [];
+    const totalA = assets.reduce((s,a)=>s+a.amount,0);
+    const totalL = liabs.reduce((s,l)=>s+l.amount,0);
+
+    const aRows = assets.map(a=>`
+      <div class="asset-row">
+        <span class="asset-label">${a.name}</span>
+        <span class="asset-val">${a.amount}M @ <span style="color:var(--green)">${a.rate}%</span> (${a.type})</span>
+      </div>`).join('');
+    const lRows = liabs.map(l=>`
+      <div class="asset-row">
+        <span class="asset-label">${l.name}</span>
+        <span class="asset-val">${l.amount}M @ <span style="color:var(--red)">${l.rate}%</span> (${l.type})</span>
+      </div>`).join('');
+
+    document.getElementById('modalBody').innerHTML = `
+      <div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:0.75rem">${sc.description}</div>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem">
+        <div class="kpi-box" style="border-left-color:var(--green);flex:1">
+          <div style="font-size:0.6rem;color:var(--text-muted)">Total Assets</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--green)">${totalA}M</div>
+        </div>
+        <div class="kpi-box" style="border-left-color:var(--red);flex:1">
+          <div style="font-size:0.6rem;color:var(--text-muted)">Total Liabs</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--red)">${totalL}M</div>
+        </div>
+        <div class="kpi-box" style="border-left-color:var(--gold);flex:1">
+          <div style="font-size:0.6rem;color:var(--text-muted)">Base Rate</div>
+          <div style="font-size:1rem;font-weight:700;color:var(--gold)">${sd.base_rate}%</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.75rem">
+        <div>
+          <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--green);margin-bottom:0.3rem">Varlıklar</div>
+          ${aRows}
+        </div>
+        <div>
+          <div style="font-size:0.62rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--red);margin-bottom:0.3rem">Yükümlülükler</div>
+          ${lRows}
+        </div>
+      </div>`;
+
+    document.getElementById('detailModal').style.display = 'flex';
+  } catch(err) { alert(err.message); }
+}
+
+async function runFromModal(target) {
+  if (!activeScenario) return;
+  closeModal('detailModal');
+  if (target === 'nii') {
+    // Store in sessionStorage and redirect
+    sessionStorage.setItem('brd_scenario_load', JSON.stringify(activeScenario));
+    window.location.href = '/nii-sensitivity';
+  } else if (target === 'brief') {
+    sessionStorage.setItem('brd_scenario_load', JSON.stringify(activeScenario));
+    window.location.href = '/morning-brief';
+  }
+}
+
+async function deleteScenario(id) {
+  if (!confirm('Bu senaryoyu silmek istediğinize emin misiniz?')) return;
+  try {
+    await fetch(`/api/scenarios/${id}`, {method:'DELETE'});
+    loadScenarios();
+  } catch(err) { alert(err.message); }
+}
+
+// Save modal
+function showSaveModal() {
+  saveAssets = []; saveLiabs = [];
+  renderItemList('asset'); renderItemList('liab');
+  document.getElementById('saveModal').style.display = 'flex';
+}
+
+function addItem(side) {
+  const pre = side === 'asset' ? 'a-' : 'l-';
+  const arr = side === 'asset' ? saveAssets : saveLiabs;
+  const name = document.getElementById(pre+'name').value.trim();
+  const amt  = parseFloat(document.getElementById(pre+'amt').value);
+  const rate = parseFloat(document.getElementById(pre+'rate').value);
+  const rp   = parseFloat(document.getElementById(pre+'rp').value);
+  const type = document.getElementById(pre+'type').value;
+  if (!name || isNaN(amt) || isNaN(rate)) { alert('Ad, Tutar ve Faiz zorunlu.'); return; }
+  arr.push({name,amount:amt,rate,repricing_months:rp||12,type});
+  renderItemList(side);
+  document.getElementById(pre+'name').value = '';
+  [pre+'amt',pre+'rate'].forEach(id=>document.getElementById(id).value='');
+}
+
+function removeItem(side, idx) {
+  if (side === 'asset') saveAssets.splice(idx,1);
+  else saveLiabs.splice(idx,1);
+  renderItemList(side);
+}
+
+function renderItemList(side) {
+  const arr  = side === 'asset' ? saveAssets : saveLiabs;
+  const cont = document.getElementById(side==='asset'?'assetList':'liabList');
+  cont.innerHTML = arr.map((it,i)=>`
+    <div class="item-row">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${it.name}</span>
+      <span style="text-align:right">${it.amount}M</span>
+      <span style="text-align:right">${it.rate}%</span>
+      <span style="text-align:right">${it.repricing_months}ay</span>
+      <span style="font-size:0.6rem;color:var(--text-muted)">${it.type}</span>
+      <button style="background:none;border:none;color:var(--text-muted);cursor:pointer" onclick="removeItem('${side}',${i})">×</button>
+    </div>`).join('');
+}
+
+async function saveScenario() {
+  const name = document.getElementById('sc-name').value.trim();
+  if (!name) { alert('Senaryo adı zorunlu.'); return; }
+  if (!saveAssets.length && !saveLiabs.length) { alert('En az bir varlık veya yükümlülük ekleyin.'); return; }
+  const sc = {
+    name,
+    description: document.getElementById('sc-desc').value.trim(),
+    category:    document.getElementById('sc-cat').value,
+    data: {
+      assets:      saveAssets,
+      liabilities: saveLiabs,
+      base_rate:   parseFloat(document.getElementById('sc-base').value) || 42.5,
+      horizon_months: 12,
+      turkish_context: true,
+    }
+  };
+  try {
+    const resp = await fetch('/api/scenarios', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(sc)
+    });
+    const d = await resp.json();
+    closeModal('saveModal');
+    loadScenarios();
+    showToast(`Senaryo kaydedildi — ID: ${d.id}`);
+  } catch(err) { alert(err.message); }
+}
+
+function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+
+['detailModal','saveModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal(id);
+  });
+});
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+
+loadScenarios();
+</script>
+{% endblock %}

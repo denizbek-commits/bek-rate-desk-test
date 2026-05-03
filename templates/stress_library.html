@@ -1,0 +1,265 @@
+{% extends "base.html" %}
+{% block title %}Stres Kütüphanesi — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+.scenario-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.scenario-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem 1.2rem; cursor: pointer;
+  transition: all 0.15s; position: relative; overflow: hidden;
+}
+.scenario-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+.scenario-card.active { border-color: var(--accent); background: var(--panel); }
+.sc-category { font-size:0.57rem; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:0.3rem; }
+.sc-name      { font-size:0.85rem; font-weight:700; font-family:'Syne',sans-serif; margin-bottom:0.4rem; }
+.sc-date      { font-size:0.62rem; color:var(--text-muted); margin-bottom:0.55rem; }
+.sc-desc      { font-size:0.67rem; color:var(--text-muted); line-height:1.5; margin-bottom:0.7rem; }
+.sc-shock-chips { display:flex; flex-wrap:wrap; gap:0.3rem; }
+.shock-chip {
+  font-size:0.6rem; padding:2px 7px; border-radius:10px; font-family:'DM Mono',monospace;
+  border:1px solid var(--border);
+}
+.shock-up   { background:rgba(239,68,68,.12); color:var(--red); border-color:rgba(239,68,68,.2); }
+.shock-down { background:rgba(16,185,129,.12); color:var(--green); border-color:rgba(16,185,129,.2); }
+.shock-neu  { background:var(--panel); color:var(--text-muted); }
+
+.result-panel {
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:8px; padding:1.2rem 1.4rem; margin-bottom:1.2rem;
+}
+.result-kpi-strip { display:flex; gap:0.8rem; flex-wrap:wrap; margin-bottom:1rem; }
+.result-kpi {
+  background:var(--panel); border:1px solid var(--border); border-radius:6px;
+  padding:0.55rem 0.9rem; min-width:130px;
+}
+.rkpi-label { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.2rem; }
+.rkpi-value { font-size:1rem; font-weight:700; font-family:'Syne',sans-serif; }
+
+.pos-table { width:100%; border-collapse:collapse; font-size:0.68rem; }
+.pos-table th { font-size:0.58rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.07em; padding:0.35rem 0.5rem; border-bottom:1px solid var(--border); text-align:right; }
+.pos-table th:first-child { text-align:left; }
+.pos-table td { padding:0.4rem 0.5rem; border-bottom:1px solid rgba(30,34,51,.5); text-align:right; font-family:'DM Mono',monospace; }
+.pos-table td:first-child { text-align:left; color:var(--text-primary); }
+.pos-table tr:hover td { background:var(--panel); }
+
+.compare-bar { height:28px; background:var(--panel); border-radius:4px; overflow:hidden; margin-bottom:0.3rem; position:relative; display:flex; align-items:center; padding:0 0.5rem; }
+.compare-fill { position:absolute; left:0; top:0; height:100%; border-radius:4px; opacity:0.35; }
+.compare-label { position:relative; z-index:1; font-size:0.68rem; display:flex; justify-content:space-between; width:100%; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding:1.5rem 1.75rem">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
+    <div>
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:0.3rem">Risk Yönetimi</div>
+      <h1 style="font-size:1.35rem;font-weight:800;font-family:'Syne',sans-serif;margin:0">Tarihsel Stres Kütüphanesi</h1>
+    </div>
+    <div style="display:flex;gap:0.6rem">
+      <button class="btn btn-ghost" onclick="runAllScenarios()" style="font-size:0.72rem">⚡ Tümünü Çalıştır</button>
+    </div>
+  </div>
+
+  <!-- Scenario Cards -->
+  <div class="scenario-grid" id="scenarioGrid"></div>
+
+  <!-- Result Panel -->
+  <div id="resultPanel" style="display:none">
+    <div class="result-panel">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
+        <div id="resultTitle" style="font-size:0.85rem;font-weight:700;font-family:'Syne',sans-serif"></div>
+        <span id="resultDate" style="font-size:0.62rem;color:var(--text-muted)"></span>
+      </div>
+      <div class="result-kpi-strip" id="resultKPIs"></div>
+      <div style="overflow-x:auto;margin-top:0.5rem">
+        <table class="pos-table">
+          <thead>
+            <tr>
+              <th>Pozisyon</th><th>Taraf</th><th>Baz YTM%</th>
+              <th>Şok (bps)</th><th>Stres YTM%</th>
+              <th>Baz Fiyat</th><th>Stres Fiyat</th>
+              <th>P&L (M TL)</th><th>Etki %</th>
+            </tr>
+          </thead>
+          <tbody id="resultTable"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Comparison Chart (all scenarios) -->
+  <div id="comparePanel" style="display:none">
+    <div class="result-panel">
+      <div style="font-size:0.78rem;font-weight:600;margin-bottom:0.8rem">Senaryo Karşılaştırması — Toplam P&L Etkisi</div>
+      <div id="compareList"></div>
+      <div id="chartCompare" style="height:280px;margin-top:1rem"></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+<script>
+let allScenarios = [];
+let compareData  = [];
+
+function loadScenarios() {
+  fetch('/api/stress/scenarios')
+    .then(r => r.json())
+    .then(data => {
+      allScenarios = data;
+      renderScenarioCards(data);
+    });
+}
+
+function renderScenarioCards(scenarios) {
+  const grid = document.getElementById('scenarioGrid');
+  grid.innerHTML = scenarios.map(s => {
+    const shocks = s.shocks || {};
+    const chips = [
+      shocks.tr_rate_parallel_bps && { label: `TR Faiz ${shocks.tr_rate_parallel_bps > 0 ? '+' : ''}${shocks.tr_rate_parallel_bps}bps`, cls: shocks.tr_rate_parallel_bps > 0 ? 'shock-up' : 'shock-down' },
+      shocks.usdtry_pct && { label: `USDTRY +${shocks.usdtry_pct}%`, cls: 'shock-up' },
+      shocks.credit_spread_bps && { label: `Spread ${shocks.credit_spread_bps > 0 ? '+' : ''}${shocks.credit_spread_bps}bps`, cls: shocks.credit_spread_bps > 0 ? 'shock-up' : 'shock-down' },
+    ].filter(Boolean);
+
+    return `
+    <div class="scenario-card" id="sc_${s.id}" onclick="runScenario('${s.id}')">
+      <div style="position:absolute;top:0;left:0;width:3px;height:100%;background:${s.color || '#2563eb'};border-radius:8px 0 0 8px"></div>
+      <div style="padding-left:0.5rem">
+        <div class="sc-category" style="color:${s.color || '#2563eb'}">${s.category || ''}</div>
+        <div class="sc-name">${s.name}</div>
+        <div class="sc-date">📅 ${s.date || '—'} · ${s.duration_days ? s.duration_days + ' gün' : ''}</div>
+        <div class="sc-desc">${(s.description || '').substring(0, 140)}...</div>
+        <div class="sc-shock-chips">
+          ${chips.map(c => `<span class="shock-chip ${c.cls}">${c.label}</span>`).join('')}
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function runScenario(scenarioId) {
+  // Aktif kart işaretle
+  document.querySelectorAll('.scenario-card').forEach(c => c.classList.remove('active'));
+  document.getElementById('sc_' + scenarioId)?.classList.add('active');
+
+  const panel = document.getElementById('resultPanel');
+  panel.style.display = 'block';
+  document.getElementById('resultTitle').textContent = '⏳ Hesaplanıyor...';
+  document.getElementById('resultTable').innerHTML = '';
+  document.getElementById('resultKPIs').innerHTML  = '';
+
+  fetch(`/api/stress/run/${scenarioId}`)
+    .then(r => r.json())
+    .then(data => renderResult(data))
+    .catch(e => { document.getElementById('resultTitle').textContent = '✗ Hata: ' + e.message; });
+}
+
+function renderResult(data) {
+  if (data.error) {
+    document.getElementById('resultTitle').textContent = '✗ ' + data.error;
+    return;
+  }
+  const s   = data.scenario;
+  const sum = data.summary;
+
+  document.getElementById('resultTitle').textContent = `${s.name} — Portföy Etkisi`;
+  document.getElementById('resultDate').textContent  = `Hesap: ${data.as_of}`;
+
+  const pnlColor = sum.total_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+  document.getElementById('resultKPIs').innerHTML = [
+    { label:'Toplam P&L', val:`${sum.total_pnl_m >= 0 ? '+' : ''}${sum.total_pnl_m.toFixed(2)} M TL`, color: pnlColor },
+    { label:'P&L Oranı',  val:`${sum.total_pnl_pct >= 0 ? '+' : ''}${sum.total_pnl_pct.toFixed(2)}%`,  color: pnlColor },
+    { label:'FX Etkisi',  val:`${sum.fx_impact_m >= 0 ? '+' : ''}${sum.fx_impact_m.toFixed(2)} M TL`,   color:'var(--text-primary)' },
+    { label:'Toplam (Dahil FX)', val:`${sum.combined_pnl_m >= 0 ? '+' : ''}${sum.combined_pnl_m.toFixed(2)} M TL`, color:sum.combined_pnl_m>=0?'var(--green)':'var(--red)' },
+    { label:'Baz Piy. Değeri', val:`${sum.base_mv_m.toFixed(1)} M TL`, color:'var(--text-muted)' },
+    { label:'Stres Piy. Değeri', val:`${sum.stressed_mv_m.toFixed(1)} M TL`, color:'var(--text-muted)' },
+  ].map(k => `
+    <div class="result-kpi">
+      <div class="rkpi-label">${k.label}</div>
+      <div class="rkpi-value" style="color:${k.color}">${k.val}</div>
+    </div>`).join('');
+
+  const tbody = document.getElementById('resultTable');
+  tbody.innerHTML = data.positions.map(p => {
+    const pnlCls = p.price_impact_m >= 0 ? 'color:var(--green)' : 'color:var(--red)';
+    const sideBadge = p.side === 'asset'
+      ? '<span style="font-size:0.58rem;color:var(--green)">VAR</span>'
+      : '<span style="font-size:0.58rem;color:var(--red)">YÜK</span>';
+    return `<tr>
+      <td>${p.name}</td>
+      <td style="text-align:center">${sideBadge}</td>
+      <td>${p.base_ytm_pct.toFixed(2)}%</td>
+      <td style="${p.rate_shock_bps > 0 ? 'color:var(--red)' : 'color:var(--green)'}">${p.rate_shock_bps > 0 ? '+' : ''}${p.rate_shock_bps}</td>
+      <td>${p.stressed_ytm.toFixed(2)}%</td>
+      <td>${p.base_price.toFixed(2)}</td>
+      <td>${p.stressed_price.toFixed(2)}</td>
+      <td style="${pnlCls}">${p.price_impact_m >= 0 ? '+' : ''}${p.price_impact_m.toFixed(3)}</td>
+      <td style="${pnlCls}">${p.impact_pct >= 0 ? '+' : ''}${p.impact_pct.toFixed(2)}%</td>
+    </tr>`;
+  }).join('');
+
+  panel.scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+function runAllScenarios() {
+  document.getElementById('comparePanel').style.display = 'block';
+  document.getElementById('compareList').innerHTML = '<div style="color:var(--text-muted);font-size:0.7rem">⏳ Tüm senaryolar çalıştırılıyor...</div>';
+
+  fetch('/api/stress/run-all')
+    .then(r => r.json())
+    .then(data => renderComparison(data));
+}
+
+function renderComparison(data) {
+  compareData = data.filter(d => !d.error);
+  const maxAbs = Math.max(...compareData.map(d => Math.abs(d.total_pnl_m)), 0.001);
+
+  document.getElementById('compareList').innerHTML = compareData.map(d => {
+    const pct  = Math.abs(d.total_pnl_m) / maxAbs * 100;
+    const col  = d.total_pnl_m >= 0 ? 'var(--green)' : 'var(--red)';
+    const sign = d.total_pnl_m >= 0 ? '+' : '';
+    return `
+      <div class="compare-bar" style="cursor:pointer" onclick="runScenario('${d.id}')">
+        <div class="compare-fill" style="width:${pct}%;background:${col}"></div>
+        <div class="compare-label">
+          <span>${d.name}</span>
+          <span style="color:${col};font-weight:600">${sign}${d.total_pnl_m.toFixed(2)} M TL</span>
+        </div>
+      </div>`;
+  }).join('');
+
+  // Plotly Bar Chart
+  const names  = compareData.map(d => d.name.split(' — ')[0]);
+  const values = compareData.map(d => d.total_pnl_m);
+  const colors = compareData.map(d => d.total_pnl_m >= 0 ? '#10b981' : '#ef4444');
+
+  Plotly.newPlot('chartCompare', [{
+    x: names, y: values, type:'bar',
+    marker:{ color:colors },
+    text: values.map(v => (v >= 0 ? '+' : '') + v.toFixed(2) + ' M'),
+    textposition:'outside',
+    textfont:{ size:9, color:'#94a3b8' },
+  }], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{ color:'#e2e8f0', family:'DM Mono', size:10 },
+    margin:{ l:40, r:20, t:20, b:80 },
+    yaxis:{ title:'P&L Etkisi (M TL)', gridcolor:'#1e2233' },
+    xaxis:{ tickangle:-30 },
+    shapes:[{ type:'line', x0:-0.5, x1:names.length-0.5, y0:0, y1:0, line:{color:'#94a3b8',width:1,dash:'dash'} }],
+  }, { responsive:true, displayModeBar:false });
+}
+
+loadScenarios();
+</script>
+{% endblock %}

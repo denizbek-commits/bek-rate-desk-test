@@ -1,0 +1,139 @@
+{% extends 'base.html' %}
+{% block title %}Bek Rate Desk — Home{% endblock %}
+
+{% block extra_css %}
+.hero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  margin-bottom: 1.75rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+.hero-label { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.15em; color:var(--accent); margin-bottom:0.4rem; }
+.hero h1 { font-family:var(--font-head); font-size:1.75rem; font-weight:800; color:var(--text); letter-spacing:-0.02em; line-height:1.1; }
+.hero h1 span { color:var(--accent); }
+.hero p { color:var(--text-muted); font-size:0.72rem; margin-top:0.5rem; max-width:500px; line-height:1.6; }
+.hero-actions { display:flex; gap:0.5rem; margin-top:0.75rem; flex-wrap:wrap; }
+
+.quick-stats { display:grid; grid-template-columns:repeat(3,1fr); gap:0.45rem; }
+.qs-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem 0.65rem; text-align:center; }
+.qs-label { font-size:0.52rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+.qs-val   { font-family:var(--font-head); font-size:0.88rem; font-weight:700; margin:0.1rem 0; }
+.qs-sub   { font-size:0.52rem; color:var(--text-muted); }
+
+.section-hdr {
+  font-size:0.58rem; text-transform:uppercase; letter-spacing:0.12em; color:var(--text-muted);
+  margin:1.5rem 0 0.6rem; display:flex; align-items:center; gap:0.75rem;
+}
+.section-hdr::after { content:''; flex:1; height:1px; background:var(--border-soft); }
+
+.tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(245px,1fr)); gap:0.55rem; }
+
+.tile {
+  background:var(--panel); border:1px solid var(--border); border-left:3px solid var(--border);
+  border-radius:var(--radius); padding:0.8rem 0.9rem; text-decoration:none;
+  display:flex; align-items:flex-start; gap:0.65rem;
+  transition:border-color 0.15s, background 0.15s, transform 0.12s;
+}
+.tile:hover { background:var(--surface); transform:translateY(-1px); border-left-color:var(--tile-c,var(--accent)); }
+.tile-icon { font-size:1rem; flex-shrink:0; margin-top:2px; }
+.tile-body { flex:1; min-width:0; }
+.tile-name { font-family:var(--font-head); font-size:0.75rem; font-weight:700; color:var(--text); margin-bottom:0.15rem; }
+.tile-desc { font-size:0.61rem; color:var(--text-muted); line-height:1.4; }
+.tile-foot { display:flex; align-items:center; gap:0.35rem; margin-top:0.35rem; }
+.tc { font-size:0.52rem; font-family:var(--font-mono); background:var(--surface); border:1px solid var(--border-soft); border-radius:3px; padding:1px 4px; color:var(--text-muted); }
+.tt { font-size:0.5rem; font-weight:600; padding:1px 5px; border-radius:3px; }
+.t-live { background:var(--green-dim); color:var(--green); }
+.t-new  { background:var(--accent-glow); color:var(--accent); }
+.t-tr   { background:rgba(245,158,11,.12); color:var(--gold); }
+{% endblock %}
+
+{% block content %}
+
+<!-- HERO -->
+<div class="hero">
+  <div>
+    <div class="hero-label">ALM Analytics Platform · Port 5001</div>
+    <h1>Bek <span>Rate</span> Desk</h1>
+    <p>Interest rate risk, liquidity management, and fixed income analytics — decision engine for ALM operations at a Turkish bank. 32 modules, 80+ API routes, TCMB EVDS + yfinance integration.</p>
+    <div class="hero-actions">
+      <a href="/morning-brief" class="btn btn-primary">🌅 Morning Brief</a>
+      <a href="/hedge-engine"  class="btn btn-ghost">🛡 Hedge Engine</a>
+      <a href="/alco-memo"     class="btn btn-ghost">📄 ALCO Memo</a>
+      <a href="/scenarios"     class="btn btn-ghost">📂 Scenarios</a>
+    </div>
+  </div>
+  <div class="quick-stats">
+    <div class="qs-box"><div class="qs-label">Modules</div><div class="qs-val" style="color:var(--accent)">32</div><div class="qs-sub">Live</div></div>
+    <div class="qs-box"><div class="qs-label">Routes</div><div class="qs-val" style="color:var(--green)">82</div><div class="qs-sub">API</div></div>
+    <div class="qs-box"><div class="qs-label">Engines</div><div class="qs-val" style="color:var(--gold)">9</div><div class="qs-sub">Python</div></div>
+    <div class="qs-box"><div class="qs-label">Data</div><div class="qs-val" style="color:var(--green);font-size:0.75rem">LIVE</div><div class="qs-sub">yfinance</div></div>
+    <div class="qs-box"><div class="qs-label">Context</div><div class="qs-val" style="color:var(--gold)">TR</div><div class="qs-sub">TCMB/BRSA</div></div>
+    <div class="qs-box"><div class="qs-label">EVDS</div><div class="qs-val" style="color:var(--green);font-size:0.65rem">✓ SET</div><div class="qs-sub">API Active</div></div>
+  </div>
+</div>
+
+<!-- DECISION ENGINE -->
+<div class="section-hdr">Decision Engine — Sprint 3</div>
+<div class="tiles">
+  <a href="/morning-brief"  class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">🌅</div><div class="tile-body"><div class="tile-name">Morning Brief</div><div class="tile-desc">Chief risk dashboard — risk level, top-3 risks, open buckets, actions, radar</div><div class="tile-foot"><span class="tc">brief</span><span class="tt t-new">Decision</span></div></div></a>
+  <a href="/hedge-engine"   class="tile" style="--tile-c:var(--green)"><div class="tile-icon">🛡</div><div class="tile-body"><div class="tile-name">Hedge Engine</div><div class="tile-desc">IRS sizing — optimal tenor, notional, EVE breach fix, NII coverage</div><div class="tile-foot"><span class="tc">hedge</span><span class="tt t-new">IRS</span></div></div></a>
+  <a href="/alco-memo"      class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">📄</div><div class="tile-body"><div class="tile-name">ALCO Memo</div><div class="tile-desc">One-click TR/EN management brief — risk, actions, copy/download</div><div class="tile-foot"><span class="tc">alco</span><span class="tt t-new">Memo</span></div></div></a>
+  <a href="/scenarios"      class="tile" style="--tile-c:#8b5cf6"><div class="tile-icon">📂</div><div class="tile-body"><div class="tile-name">Scenarios</div><div class="tile-desc">6 built-in scenarios + custom CRUD — one-click load to any module</div><div class="tile-foot"><span class="tc">scen</span><span class="tt t-new">Library</span></div></div></a>
+  <a href="/alerts"         class="tile" style="--tile-c:var(--red)"><div class="tile-icon">🔔</div><div class="tile-body"><div class="tile-name">Alert System</div><div class="tile-desc">7-metric monitor — LCR/NSFR/NII/EVE/FX/rate — email SMTP</div><div class="tile-foot"><span class="tc">alt</span><span class="tt t-live">Live</span></div></div></a>
+</div>
+
+<!-- TRADING DESK -->
+<div class="section-hdr">Trading Desk</div>
+<div class="tiles">
+  <a href="/trading-desk"      class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">🖥</div><div class="tile-body"><div class="tile-name">FX Trading Desk</div><div class="tile-desc">Spot fiyatlama, forward, FX swap, gün içi pozisyon defteri, cross rate matrisi</div><div class="tile-foot"><span class="tc">trade</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/money-market"      class="tile" style="--tile-c:var(--green)"><div class="tile-icon">💵</div><div class="tile-body"><div class="tile-name">Money Market Desk</div><div class="tile-desc">Likidite yönetimi, repo fiyatlama, TCMB ihalesi, interbank limitler, WACF raporu</div><div class="tile-foot"><span class="tc">mm</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/pricing-simulator" class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">💰</div><div class="tile-body"><div class="tile-name">Pricing Simulator</div><div class="tile-desc">Loan profitability (FTP+credit+OpEx+capital) + deposit campaign NII impact</div><div class="tile-foot"><span class="tc">price</span><span class="tt t-new">Analytics</span></div></div></a>
+  <a href="/hedge-book"        class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">📒</div><div class="tile-body"><div class="tile-name">Hedge Book</div><div class="tile-desc">IRS/swap blotter — live MTM, DV01, annual P&L, duration contribution</div><div class="tile-foot"><span class="tc">hbook</span><span class="tt t-new">Book</span></div></div></a>
+  <a href="/fx-ladder"         class="tile" style="--tile-c:#8b5cf6"><div class="tile-icon">🪜</div><div class="tile-body"><div class="tile-name">FX Liquidity Ladder</div><div class="tile-desc">TL/USD/EUR maturity ladder — inflow/outflow/swap, survival horizon, stress</div><div class="tile-foot"><span class="tc">fxlad</span><span class="tt t-new">Risk</span></div></div></a>
+</div>
+
+<!-- DEALER TOOLS -->
+<div class="section-hdr">Dealer Araçları — Kıdemli Dealer</div>
+<div class="tiles">
+  <a href="/fx-options"   class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">🎯</div><div class="tile-body"><div class="tile-name">FX Options</div><div class="tile-desc">Garman-Kohlhagen fiyatlama — Vanilla, strateji builder, vol surface, Greeks monitor</div><div class="tile-foot"><span class="tc">opt</span><span class="tt t-new">GK Model</span></div></div></a>
+  <a href="/nop-tracker"  class="tile" style="--tile-c:var(--red)"><div class="tile-icon">🛡️</div><div class="tile-body"><div class="tile-name">BRSA NOP Tracker</div><div class="tile-desc">Net Döviz Pozisyonu — BDDK %20 sınırı, CCY bazlı kırılım, headroom, ihlal uyarısı</div><div class="tile-foot"><span class="tc">nop</span><span class="tt t-live">Regulatory</span></div></div></a>
+  <a href="/dealer-pnl"   class="tile" style="--tile-c:var(--green)"><div class="tile-icon">📈</div><div class="tile-body"><div class="tile-name">Daily P&amp;L</div><div class="tile-desc">Gerçekleşen + gerçekleşmemiş PnL — pair bazlı, kazanan/kaybeden, Plotly bar chart</div><div class="tile-foot"><span class="tc">pnl</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/rate-sheet"   class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">📋</div><div class="tile-body"><div class="tile-name">Rate Sheet</div><div class="tile-desc">Müşteri kuru tablosu — spot + 1W-1Y forward, segment bazlı bid/ask, print-ready</div><div class="tile-foot"><span class="tc">rs</span><span class="tt t-new">Distribution</span></div></div></a>
+  <a href="/eco-calendar" class="tile" style="--tile-c:#8b5cf6"><div class="tile-icon">📅</div><div class="tile-body"><div class="tile-name">Economic Calendar</div><div class="tile-desc">TCMB PPK + FOMC toplantıları, geri sayım, merkez bankası faiz tablosu, etki skalası</div><div class="tile-foot"><span class="tc">cal</span><span class="tt t-new">2026</span></div></div></a>
+</div>
+
+<!-- ALM CORE -->
+<div class="section-hdr">ALM Core</div>
+<div class="tiles">
+  <a href="/nii-sensitivity"  class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">📊</div><div class="tile-body"><div class="tile-name">NII Sensitivity</div><div class="tile-desc">Repricing gap + 8 shock scenarios — TCMB/BRSA context, bear/bull regimes</div><div class="tile-foot"><span class="tc">nii</span><span class="tt t-tr">TR</span></div></div></a>
+  <a href="/eve-duration-gap" class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">⚡</div><div class="tile-body"><div class="tile-name">EVE / Duration Gap</div><div class="tile-desc">IRRBB EVE analysis, Basel III d368 shocks, Tier 1 breach detection</div><div class="tile-foot"><span class="tc">eve</span><span class="tt t-live">IRRBB</span></div></div></a>
+  <a href="/fx-gap"           class="tile" style="--tile-c:#8b5cf6"><div class="tile-icon">💱</div><div class="tile-body"><div class="tile-name">FX Gap</div><div class="tile-desc">TL/USD/EUR mismatch, BRSA stress, live spot rates, carry analysis</div><div class="tile-foot"><span class="tc">fx</span><span class="tt t-tr">TR</span></div></div></a>
+  <a href="/liquidity-ratios" class="tile" style="--tile-c:var(--green)"><div class="tile-icon">💧</div><div class="tile-body"><div class="tile-name">Liquidity (LCR/NSFR)</div><div class="tile-desc">HQLA bucketing (L1/L2A/L2B), cash outflow stress, BRSA limits</div><div class="tile-foot"><span class="tc">liq</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/ftp-curve"        class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">🔄</div><div class="tile-body"><div class="tile-name">FTP Curve</div><div class="tile-desc">TCMB + liquidity premium term structure, NIM decomposition</div><div class="tile-foot"><span class="tc">ftp</span><span class="tt t-tr">TR</span></div></div></a>
+</div>
+
+<!-- RATES & PRICING -->
+<div class="section-hdr">Rates & Pricing</div>
+<div class="tiles">
+  <a href="/bond-pricer"     class="tile" style="--tile-c:#06b6d4"><div class="tile-icon">🔖</div><div class="tile-body"><div class="tile-name">Bond Pricer</div><div class="tile-desc">Fixed/floating/amortizing — YTM, duration, DV01, convexity, price-yield chart</div><div class="tile-foot"><span class="tc">bond</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/oas-calculator"  class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">🌳</div><div class="tile-body"><div class="tile-name">OAS Calculator</div><div class="tile-desc">Callable bond binomial tree — FRED calibration, MOVE vol, redemption prob</div><div class="tile-foot"><span class="tc">oas</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/rate-delta"      class="tile" style="--tile-c:var(--red)"><div class="tile-icon">🌡</div><div class="tile-body"><div class="tile-name">Rate Delta</div><div class="tile-desc">US Treasury heatmap + TCMB delta — regime, TLT signals, TLREF spread</div><div class="tile-foot"><span class="tc">rd</span><span class="tt t-tr">TR+US</span></div></div></a>
+  <a href="/yield-curve"     class="tile" style="--tile-c:var(--green)"><div class="tile-icon">〰</div><div class="tile-body"><div class="tile-name">Yield Curve</div><div class="tile-desc">US Nelson-Siegel + TCMB faiz yapısı — separate panels, EVDS live</div><div class="tile-foot"><span class="tc">yc</span><span class="tt t-tr">TR+US</span></div></div></a>
+  <a href="/arbitrage"       class="tile" style="--tile-c:#ec4899"><div class="tile-icon">⚖️</div><div class="tile-body"><div class="tile-name">Arbitrage</div><div class="tile-desc">Preferred stock peer valuation + Z-score pairs — OLS hedge ratio, OU half-life</div><div class="tile-foot"><span class="tc">arb</span><span class="tt t-live">Live</span></div></div></a>
+</div>
+
+<!-- ANALYTICS -->
+<div class="section-hdr">Analytics</div>
+<div class="tiles">
+  <a href="/behavioral-modeling" class="tile" style="--tile-c:#8b5cf6"><div class="tile-icon">🧠</div><div class="tile-body"><div class="tile-name">Behavioral Modeling</div><div class="tile-desc">Deposit beta, stickiness, CPR prepayment — behavioral NII overlay</div><div class="tile-foot"><span class="tc">beh</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/monte-carlo"         class="tile" style="--tile-c:var(--accent)"><div class="tile-icon">🎲</div><div class="tile-body"><div class="tile-name">Monte Carlo</div><div class="tile-desc">Vasicek 1000-path NII simulation — VaR/CVaR, fan chart, stress grid</div><div class="tile-foot"><span class="tc">mc</span><span class="tt t-live">Live</span></div></div></a>
+  <a href="/risk-heatmap"        class="tile" style="--tile-c:var(--red)"><div class="tile-icon">🌡️</div><div class="tile-body"><div class="tile-name">Risk Heatmap</div><div class="tile-desc">5×3 ALM risk matrix (Base/Stress/Severe) — 1-5 color-coded scoring</div><div class="tile-foot"><span class="tc">heat</span><span class="tt t-new">Sprint 2</span></div></div></a>
+  <a href="/funding-engine"      class="tile" style="--tile-c:var(--green)"><div class="tile-icon">🏦</div><div class="tile-body"><div class="tile-name">Funding Engine</div><div class="tile-desc">WACF, funding mix, marginal cost curve, optimizer with constraints</div><div class="tile-foot"><span class="tc">fund</span><span class="tt t-new">Sprint 2</span></div></div></a>
+  <a href="/ftp-pricing"         class="tile" style="--tile-c:var(--gold)"><div class="tile-icon">🏷</div><div class="tile-body"><div class="tile-name">FTP Pricing</div><div class="tile-desc">Loan minimum pricing + business line NIM P&L — BDDK/TMSF included</div><div class="tile-foot"><span class="tc">ftpp</span><span class="tt t-new">Sprint 2</span></div></div></a>
+</div>
+
+{% endblock %}

@@ -1,0 +1,339 @@
+{% extends 'base.html' %}
+{% block title %}Funding Engine — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; transition:all 0.15s; background:none; border-top:none; border-left:none; border-right:none; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.layout { display:grid; grid-template-columns:300px 1fr; gap:1rem; align-items:start; }
+.add-form { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.add-form .full { grid-column:span 2; }
+.item-row { display:grid; grid-template-columns:1fr 60px 60px 70px 55px 22px; gap:0.3rem; align-items:center; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.3rem 0.5rem; font-size:0.67rem; }
+.cat-retail    { background:rgba(16,185,129,.15); color:var(--green); }
+.cat-wholesale { background:rgba(37,99,235,.15);  color:var(--accent); }
+.cat-capital   { background:rgba(245,158,11,.15); color:var(--gold); }
+.cat-badge { font-size:0.55rem; border-radius:3px; padding:1px 5px; font-weight:600; }
+.fund-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.fund-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.fund-table td { padding:0.4rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.fund-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.fund-table tr:hover td { background:var(--surface); }
+.opt-constraint { display:grid; grid-template-columns:1fr 1fr; gap:0.4rem; }
+.donut-box { width:160px; height:160px; margin:0 auto; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Funding Engine</h1>
+  <p>Cost of funds, funding mix analysis, optimizer — retail vs wholesale vs capital split with Turkish banking context</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-analyze"  onclick="switchTab('analyze')">Mix Analizi</button>
+  <button class="tab-btn"        id="tab-optimize" onclick="switchTab('optimize')">Optimizer</button>
+</div>
+
+<!-- ══ TAB 1: MIX ANALİZİ ══ -->
+<div id="panel-analyze">
+  <div class="layout">
+    <div style="display:flex;flex-direction:column;gap:0.75rem">
+      <div class="card">
+        <div class="card-title">Funding Sources</div>
+        <div id="fundingList" style="display:flex;flex-direction:column;gap:0.3rem;max-height:220px;overflow-y:auto;margin-bottom:0.6rem"></div>
+        <div class="add-form">
+          <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="fName" placeholder="e.g. Time Deposits 3M"/></div>
+          <div class="form-group"><label class="form-label">Amount (M)</label><input class="form-input" id="fAmt" type="number"/></div>
+          <div class="form-group"><label class="form-label">Rate (%)</label><input class="form-input" id="fRate" type="number" step="0.1"/></div>
+          <div class="form-group"><label class="form-label">Tenor (months)</label><input class="form-input" id="fTenor" type="number" value="3"/></div>
+          <div class="form-group full">
+            <label class="form-label">Category</label>
+            <select class="form-select" id="fCat">
+              <option value="retail">Retail</option>
+              <option value="wholesale">Wholesale</option>
+              <option value="capital">Capital</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-ghost w-full" style="margin-top:0.3rem" onclick="addItem()">+ Add Source</button>
+        <button class="btn btn-primary w-full" style="margin-top:0.4rem" onclick="runAnalysis()">▶ Analyze</button>
+        <button class="btn btn-ghost w-full" style="margin-top:0.3rem" onclick="loadSample()">Load Sample Portfolio</button>
+      </div>
+      <div class="card">
+        <div class="card-title">Parameters</div>
+        <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="baseRate" type="number" value="45.0" step="0.25"/></div>
+        <div class="form-group"><label class="form-label">Total Assets (M)</label><input class="form-input" id="totalAssets" type="number" placeholder="optional"/></div>
+      </div>
+    </div>
+
+    <div id="resultsPanel">
+      <div class="coming-soon"><div class="coming-soon-icon">🏦</div><h2>Funding Engine</h2>
+      <p>Add funding sources and run analysis to see WACF, mix breakdown, and marginal cost curve.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TAB 2: OPTİMİZER ══ -->
+<div id="panel-optimize" style="display:none">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">Optimizer Constraints</div>
+      <div class="form-group"><label class="form-label">Target Funding Need (M)</label><input class="form-input" id="opt-target" type="number" value="5000"/></div>
+      <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="opt-base" type="number" value="45.0" step="0.25"/></div>
+      <hr class="sep"/>
+      <div class="form-group"><label class="form-label">Min Retail (%)</label><input class="form-input" id="opt-min-retail" type="number" value="40"/></div>
+      <div class="form-group"><label class="form-label">Max Wholesale (%)</label><input class="form-input" id="opt-max-wh" type="number" value="40"/></div>
+      <div class="form-group"><label class="form-label">Min Capital (%)</label><input class="form-input" id="opt-min-cap" type="number" value="8"/></div>
+      <div class="form-group"><label class="form-label">Min Stability Score</label><input class="form-input" id="opt-stability" type="number" value="60"/></div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="runOptimizer()">▶ Optimize</button>
+    </div>
+    <div id="optResults">
+      <div class="coming-soon"><div class="coming-soon-icon">⚙️</div><h2>Funding Optimizer</h2>
+      <p>Set constraints and run to find the minimum-cost funding mix that satisfies all regulatory and stability requirements.</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let items = [];
+
+function switchTab(tab) {
+  ['analyze','optimize'].forEach(t => {
+    document.getElementById('panel-'+t).style.display   = t===tab ? '' : 'none';
+    document.getElementById('tab-'+t).classList.toggle('active', t===tab);
+  });
+}
+
+function loadSample() {
+  items = [
+    {name:'Demand Deposits (TL)',   amount:1500, rate:15.0,  tenor_months:1,  funding_type:'retail'},
+    {name:'Time Deposits 3M',       amount:1900, rate:42.0,  tenor_months:3,  funding_type:'retail'},
+    {name:'Time Deposits 6M',       amount:600,  rate:40.0,  tenor_months:6,  funding_type:'retail'},
+    {name:'Wholesale Funding 12M',  amount:400,  rate:44.0,  tenor_months:12, funding_type:'wholesale'},
+    {name:'Subordinated Bond (5Y)', amount:200,  rate:50.0,  tenor_months:60, funding_type:'wholesale'},
+    {name:'Equity / Capital',       amount:1500, rate:0.0,   tenor_months:999,funding_type:'capital'},
+  ];
+  document.getElementById('baseRate').value = '42.5';
+  renderList();
+}
+
+function addItem() {
+  const name = document.getElementById('fName').value.trim();
+  const amt  = parseFloat(document.getElementById('fAmt').value);
+  const rate = parseFloat(document.getElementById('fRate').value);
+  const tenor= parseFloat(document.getElementById('fTenor').value);
+  const cat  = document.getElementById('fCat').value;
+  if (!name || isNaN(amt) || isNaN(rate)) { alert('Name, Amount and Rate required.'); return; }
+  items.push({name, amount:amt, rate, tenor_months:tenor, funding_type:cat});
+  renderList();
+  ['fName','fAmt','fRate'].forEach(id => document.getElementById(id).value = '');
+}
+
+function removeItem(i) { items.splice(i,1); renderList(); }
+
+function renderList() {
+  const catCls = {retail:'cat-retail', wholesale:'cat-wholesale', capital:'cat-capital'};
+  document.getElementById('fundingList').innerHTML = items.map((it,i) => `
+    <div class="item-row">
+      <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text)">${it.name}</span>
+      <span style="text-align:right;font-size:0.63rem;color:var(--text-dim)">${it.amount}M</span>
+      <span style="text-align:right;font-size:0.63rem;color:var(--text-dim)">${it.rate}%</span>
+      <span style="text-align:right;font-size:0.63rem;color:var(--text-muted)">${it.tenor_months}M</span>
+      <span class="cat-badge ${catCls[it.funding_type]||''}">${it.funding_type}</span>
+      <button style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem" onclick="removeItem(${i})">×</button>
+    </div>`).join('');
+}
+
+async function runAnalysis() {
+  if (!items.length) { alert('Add funding sources first.'); return; }
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Analyzing funding structure...</div>';
+  try {
+    const resp = await fetch('/api/funding/analyze', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        liabilities: items,
+        base_rate:   parseFloat(document.getElementById('baseRate').value),
+        total_assets:parseFloat(document.getElementById('totalAssets').value)||0,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderAnalysis(d);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderAnalysis(d) {
+  const catColor = {retail:'var(--green)',wholesale:'var(--accent)',capital:'var(--gold)',other:'var(--text-muted)'};
+  const catRows  = Object.entries(d.categories_pct).filter(([c,p])=>p>0).map(([c,p]) =>
+    `<div style="display:flex;justify-content:space-between;padding:0.4rem 0;border-bottom:1px solid var(--border-soft);font-size:0.72rem">
+      <span style="color:${catColor[c]};font-weight:500;text-transform:capitalize">${c}</span>
+      <span style="font-family:var(--font-mono)">${d.categories_m[c]?.toFixed(0)}M &nbsp;<strong>${p.toFixed(1)}%</strong>&nbsp; WAC: ${d.category_wac[c]?.toFixed(2)||'—'}%</span>
+    </div>`).join('');
+
+  const tableRows = d.items.map(it => {
+    const spr = it.spread_to_ftp;
+    const sprCls = spr > 0 ? 'style="color:var(--green)"' : 'style="color:var(--red)"';
+    return `<tr>
+      <td>${it.name}</td>
+      <td class="r">${it.amount.toFixed(0)}M</td>
+      <td class="r">${it.weight_pct.toFixed(1)}%</td>
+      <td class="r">${it.rate_pct.toFixed(2)}%</td>
+      <td class="r">${it.all_in_pct.toFixed(3)}%</td>
+      <td class="r" style="color:var(--accent)">+${it.lp_bps.toFixed(0)}bps</td>
+      <td class="r" style="color:var(--gold)">${it.ftp_rate_pct.toFixed(3)}%</td>
+      <td class="r" ${sprCls}>${spr>=0?'+':''}${spr.toFixed(3)}%</td>
+      <td class="r" style="color:var(--text-muted)">${it.annual_cost_m.toFixed(1)}M</td>
+    </tr>`;
+  }).join('');
+
+  const marginalRows = d.marginal_cost_curve.map(m =>
+    `<tr>
+      <td>${m.tenor}</td>
+      <td class="r">${m.tenor_months}M</td>
+      <td class="r" style="color:var(--accent)">+${m.lp_bps.toFixed(0)}bps</td>
+      <td class="r" style="color:var(--gold)">${m.marginal_cost_pct.toFixed(3)}%</td>
+    </tr>`).join('');
+
+  const stabilityColor = d.stability_score > 75 ? 'var(--green)' : d.stability_score > 55 ? 'var(--gold)' : 'var(--red)';
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">WACF (all-in)</div><div class="stat-value accent">${d.wacf_pct.toFixed(4)}%</div><div class="stat-sub">incl. regulatory cost</div></div>
+      <div class="stat-box"><div class="stat-label">WACF (client only)</div><div class="stat-value">${d.wacf_client_only_pct.toFixed(4)}%</div><div class="stat-sub">Regulatory add: ${d.regulatory_cost_bps.toFixed(1)}bps</div></div>
+      <div class="stat-box"><div class="stat-label">Total Funding</div><div class="stat-value">${d.total_funding_m.toFixed(0)}M</div><div class="stat-sub">Funding ratio: ${d.funding_ratio_pct.toFixed(1)}%</div></div>
+      <div class="stat-box"><div class="stat-label">Stability Score</div><div class="stat-value" style="color:${stabilityColor}">${d.stability_score.toFixed(1)}</div><div class="stat-sub">100=fully retail</div></div>
+      <div class="stat-box"><div class="stat-label">Top-3 Concentration</div><div class="stat-value ${d.top3_concentration_pct>60?'negative':''}">${d.top3_concentration_pct.toFixed(1)}%</div></div>
+    </div>
+
+    <div class="grid-2 mb-2">
+      <div class="card">
+        <div class="card-title">Category Breakdown</div>
+        ${catRows}
+      </div>
+      <div class="card">
+        <div class="card-title">Marginal Cost Curve (LP by Tenor)</div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem;height:200px" id="chartMarginal"></div>
+      </div>
+    </div>
+
+    <div class="card mb-2">
+      <div class="card-title">Funding Sources Detail</div>
+      <div style="overflow-x:auto">
+        <table class="fund-table">
+          <thead><tr>
+            <th>Source</th><th class="r">Amount</th><th class="r">Weight</th>
+            <th class="r">Client Rate</th><th class="r">All-in Rate</th>
+            <th class="r">LP</th><th class="r">FTP Rate</th>
+            <th class="r">vs FTP</th><th class="r">Annual Cost</th>
+          </tr></thead>
+          <tbody>${tableRows}</tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Marginal Cost by Tenor</div>
+      <table class="fund-table">
+        <thead><tr><th>Tenor</th><th class="r">Months</th><th class="r">LP Add-on</th><th class="r">Marginal Cost</th></tr></thead>
+        <tbody>${marginalRows}</tbody>
+      </table>
+    </div>`;
+
+  // Render marginal cost chart
+  const mc = d.marginal_cost_curve;
+  Plotly.newPlot('chartMarginal', [
+    { type:'scatter', x:mc.map(m=>m.tenor), y:mc.map(m=>m.marginal_cost_pct),
+      mode:'lines+markers', line:{color:'#2563eb',width:2}, marker:{size:6}, name:'Marginal Cost' },
+    { type:'bar', x:mc.map(m=>m.tenor), y:mc.map(m=>m.lp_bps),
+      yaxis:'y2', marker:{color:'rgba(245,158,11,0.3)'}, name:'LP (bps)' },
+  ], {
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    margin:{t:5,b:35,l:50,r:50},
+    font:{family:'DM Mono',size:9,color:'#64748b'},
+    xaxis:{gridcolor:'#1e2233'},
+    yaxis:{gridcolor:'#1e2233',title:{text:'Cost (%)',font:{size:9}},ticksuffix:'%'},
+    yaxis2:{overlaying:'y',side:'right',title:{text:'LP (bps)',font:{size:9}},showgrid:false},
+    legend:{font:{size:8},bgcolor:'transparent'},
+  },{displayModeBar:false,responsive:true});
+}
+
+async function runOptimizer() {
+  document.getElementById('optResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Optimizing funding structure...</div>';
+  try {
+    const resp = await fetch('/api/funding/optimize', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        target_funding_m:   parseFloat(document.getElementById('opt-target').value),
+        base_rate:          parseFloat(document.getElementById('opt-base').value),
+        min_retail_pct:     parseFloat(document.getElementById('opt-min-retail').value),
+        max_wholesale_pct:  parseFloat(document.getElementById('opt-max-wh').value),
+        min_capital_pct:    parseFloat(document.getElementById('opt-min-cap').value),
+        min_stability_score:parseFloat(document.getElementById('opt-stability').value),
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderOptimizer(d);
+  } catch(err) {
+    document.getElementById('optResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderOptimizer(d) {
+  const catColor = {retail:'var(--green)',wholesale:'var(--accent)',capital:'var(--gold)'};
+  const rows = d.items.map(it => `<tr>
+    <td>${it.name}</td>
+    <td class="r">${it.amount_m.toFixed(0)}M</td>
+    <td class="r">${it.weight_pct.toFixed(1)}%</td>
+    <td class="r">${it.rate_pct.toFixed(2)}%</td>
+    <td class="r">${it.all_in_pct.toFixed(3)}%</td>
+    <td class="r" style="color:var(--accent)">+${it.lp_bps.toFixed(0)}bps</td>
+    <td class="r" style="color:var(--text-muted)">${it.annual_cost_m.toFixed(1)}M</td>
+    <td class="r">${it.nsfr_asf_pct.toFixed(0)}%</td>
+  </tr>`).join('');
+
+  const catSplit = Object.entries(d.category_split_pct).filter(([c,p])=>p>0).map(([c,p]) =>
+    `<div style="display:flex;justify-content:space-between;padding:0.35rem 0;border-bottom:1px solid var(--border-soft);font-size:0.72rem">
+      <span style="color:${catColor[c]||'var(--text)'};text-transform:capitalize">${c}</span>
+      <span style="font-family:var(--font-mono)">${p.toFixed(1)}%</span>
+    </div>`).join('');
+
+  const stab = d.stability_score;
+  const stabColor = stab>70?'var(--green)':stab>50?'var(--gold)':'var(--red)';
+
+  document.getElementById('optResults').innerHTML = `
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Optimal WACF</div><div class="stat-value accent">${d.optimal_wacf_pct.toFixed(4)}%</div></div>
+      <div class="stat-box"><div class="stat-label">Annual Funding Cost</div><div class="stat-value">${d.annual_funding_cost_m.toFixed(1)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Allocated</div><div class="stat-value">${d.allocated_m.toFixed(0)}M</div><div class="stat-sub">Shortfall: ${d.shortfall_m.toFixed(0)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Stability</div><div class="stat-value" style="color:${stabColor}">${d.stability_score.toFixed(1)}</div></div>
+    </div>
+    <div class="grid-2 mb-2">
+      <div class="card"><div class="card-title">Optimal Category Split</div>${catSplit}</div>
+      <div class="card"><div class="card-title">Constraints Applied</div>
+        <div style="font-size:0.72rem;color:var(--text-dim)">
+          <div style="padding:0.35rem 0;border-bottom:1px solid var(--border-soft)">Min retail: <strong>${d.constraints_applied.min_retail_pct}%</strong></div>
+          <div style="padding:0.35rem 0;border-bottom:1px solid var(--border-soft)">Max wholesale: <strong>${d.constraints_applied.max_wholesale_pct}%</strong></div>
+          <div style="padding:0.35rem 0">Min capital: <strong>${d.constraints_applied.min_capital_pct}%</strong></div>
+        </div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Optimal Funding Structure</div>
+      <table class="fund-table">
+        <thead><tr><th>Source</th><th class="r">Amount</th><th class="r">Weight</th>
+          <th class="r">Client Rate</th><th class="r">All-in Rate</th>
+          <th class="r">LP</th><th class="r">Annual Cost</th><th class="r">NSFR ASF</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+</script>
+{% endblock %}

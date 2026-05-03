@@ -1,0 +1,332 @@
+{% extends 'base.html' %}
+{% block title %}Regulatory Reports — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:1.25rem; }
+.tab-btn { padding:0.4rem 1.25rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.layout { display:grid; grid-template-columns:280px 1fr; gap:1rem; align-items:start; }
+.reg-table { width:100%; border-collapse:collapse; font-size:0.71rem; }
+.reg-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.reg-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.reg-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.status-ok   { background:rgba(16,185,129,.12); color:var(--green);  border:1px solid rgba(16,185,129,.3); border-radius:var(--radius); padding:0.5rem 0.9rem; font-family:var(--font-head); font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:0.4rem; }
+.status-fail { background:rgba(239,68,68,.12);  color:var(--red);    border:1px solid rgba(239,68,68,.3);  border-radius:var(--radius); padding:0.5rem 0.9rem; font-family:var(--font-head); font-size:0.78rem; font-weight:700; display:inline-flex; align-items:center; gap:0.4rem; }
+.metric-row { display:flex; justify-content:space-between; align-items:center; padding:0.4rem 0; border-bottom:1px solid var(--border-soft); font-size:0.72rem; }
+.metric-label { color:var(--text-muted); }
+.metric-val   { font-family:var(--font-mono); font-weight:500; }
+.ihlal { color:var(--red); font-weight:700; }
+.uyari { color:var(--gold); font-weight:600; }
+.uygun { color:var(--green); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Regulatory Reports</h1>
+  <p>BDDK LCR formatı · Basel III IRRBB EVE tablosu · Print-ready HTML export</p>
+</div>
+
+<div class="tabs">
+  <button class="tab-btn active" id="tab-lcr"   onclick="switchTab('lcr')">📋 LCR Raporu (BDDK)</button>
+  <button class="tab-btn"       id="tab-irrbb"  onclick="switchTab('irrbb')">⚡ IRRBB EVE (Basel III)</button>
+</div>
+
+<!-- ══ LCR TAB ══ -->
+<div id="panel-lcr">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">LCR Girdileri</div>
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--accent);margin-bottom:0.4rem">YKLV (HQLA)</div>
+      <div class="metric-row"><span class="metric-label">Seviye 1 Varlıklar (M)</span></div>
+      <input class="form-input" id="hqla1" type="number" placeholder="Nakit, TCMB, T.C. Hazine" style="margin-bottom:0.5rem"/>
+      <div class="metric-row"><span class="metric-label">Seviye 2A (M)</span></div>
+      <input class="form-input" id="hqla2a" type="number" placeholder="AAA-AA tahvil — %15 haircut" style="margin-bottom:0.5rem"/>
+      <div class="metric-row"><span class="metric-label">Seviye 2B (M)</span></div>
+      <input class="form-input" id="hqla2b" type="number" placeholder="Diğer — %50 haircut" style="margin-bottom:0.75rem"/>
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--red);margin-bottom:0.4rem">30 Günlük Nakit Akışları</div>
+      <div class="metric-row"><span class="metric-label">Beklenen Çıkışlar (M)</span></div>
+      <input class="form-input" id="outflows" type="number" placeholder="Mevduat + taahhüt çıkışları" style="margin-bottom:0.5rem"/>
+      <div class="metric-row"><span class="metric-label">Beklenen Girişler (M)</span></div>
+      <input class="form-input" id="inflows" type="number" placeholder="Kredi geri ödemeleri" style="margin-bottom:0.5rem"/>
+      <div class="metric-row"><span class="metric-label">LCR (otomatik hesap.)</span>
+        <span class="metric-val" id="lcrCalc" style="color:var(--accent)">—</span>
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="generateLCR()">▶ Rapor Üret</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadLCRSample()">Sample</button>
+    </div>
+    <div id="lcrResults">
+      <div class="coming-soon"><div class="coming-soon-icon">📋</div><h2>LCR Raporu</h2>
+      <p>BDDK formatında LCR tablosu üretmek için sol taraftaki değerleri girin.</p></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ IRRBB TAB ══ -->
+<div id="panel-irrbb" style="display:none">
+  <div class="layout">
+    <div class="card">
+      <div class="card-title">IRRBB Girdileri</div>
+      <div class="form-group"><label class="form-label">Tier 1 Sermaye (M)</label><input class="form-input" id="tier1" type="number" placeholder="1500"/></div>
+      <hr class="sep" style="margin:0.5rem 0"/>
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.5rem">ΔEVE — 6 BCBS Şoku (M)</div>
+      <div class="form-group"><label class="form-label">Paralel +200bps</label><input class="form-input" id="eve_pu200" type="number" placeholder="-185"/></div>
+      <div class="form-group"><label class="form-label">Paralel −200bps</label><input class="form-input" id="eve_pd200" type="number" placeholder="+95"/></div>
+      <div class="form-group"><label class="form-label">Bear Flatten</label><input class="form-input" id="eve_bf"    type="number" placeholder="-220"/></div>
+      <div class="form-group"><label class="form-label">Bull Steepen</label><input class="form-input" id="eve_bs"    type="number" placeholder="+85"/></div>
+      <div class="form-group"><label class="form-label">Bear Steepen</label><input class="form-input" id="eve_bst"   type="number" placeholder="-155"/></div>
+      <div class="form-group"><label class="form-label">Bull Flatten</label><input class="form-input" id="eve_bfl"   type="number" placeholder="+70"/></div>
+      <hr class="sep" style="margin:0.5rem 0"/>
+      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-bottom:0.5rem">ΔNII (M)</div>
+      <div class="form-group"><label class="form-label">Paralel +200bps</label><input class="form-input" id="nii_pu200" type="number" placeholder="-14"/></div>
+      <div class="form-group"><label class="form-label">Bear Flatten</label><input class="form-input" id="nii_bf"    type="number" placeholder="-9.1"/></div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="generateIRRBB()">▶ Rapor Üret</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadIRRBBSample()">Sample</button>
+    </div>
+    <div id="irrbbResults">
+      <div class="coming-soon"><div class="coming-soon-icon">⚡</div><h2>IRRBB EVE Tablosu</h2>
+      <p>Basel III d368 formatında IRRBB raporu. 6 standart şok senaryosu — Tier 1 yüzdesi ve ihlal tespiti.</p></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function switchTab(t) {
+  ['lcr','irrbb'].forEach(x => {
+    document.getElementById('panel-'+x).style.display  = x===t?'':'none';
+    document.getElementById('tab-'+t).classList.toggle('active',false);
+  });
+  document.getElementById('tab-'+t).classList.add('active');
+}
+
+// ── Auto-calculate LCR ───────────────────────────────────────────────────
+['hqla1','hqla2a','hqla2b','outflows','inflows'].forEach(id => {
+  document.getElementById(id).addEventListener('input', calcLCR);
+});
+function calcLCR() {
+  const l1  = parseFloat(document.getElementById('hqla1').value)||0;
+  const l2a = parseFloat(document.getElementById('hqla2a').value)||0;
+  const l2b = parseFloat(document.getElementById('hqla2b').value)||0;
+  const out = parseFloat(document.getElementById('outflows').value)||0;
+  const inf = parseFloat(document.getElementById('inflows').value)||0;
+
+  const hqla = l1 + l2a*0.85 + l2b*0.50;   // haircuts
+  const net  = Math.max(0, out - Math.min(inf, out*0.75));
+  const lcr  = net > 0 ? hqla/net*100 : 0;
+
+  const el = document.getElementById('lcrCalc');
+  el.textContent = net > 0 ? lcr.toFixed(1)+'%' : '—';
+  el.style.color = lcr >= 110 ? 'var(--green)' : lcr >= 100 ? 'var(--gold)' : 'var(--red)';
+}
+
+function loadLCRSample() {
+  document.getElementById('hqla1').value   = '800';
+  document.getElementById('hqla2a').value  = '300';
+  document.getElementById('hqla2b').value  = '100';
+  document.getElementById('outflows').value= '1000';
+  document.getElementById('inflows').value = '200';
+  calcLCR();
+}
+
+function loadIRRBBSample() {
+  document.getElementById('tier1').value    = '1500';
+  document.getElementById('eve_pu200').value= '-185';
+  document.getElementById('eve_pd200').value= '+95';
+  document.getElementById('eve_bf').value   = '-220';
+  document.getElementById('eve_bs').value   = '+85';
+  document.getElementById('eve_bst').value  = '-155';
+  document.getElementById('eve_bfl').value  = '+70';
+  document.getElementById('nii_pu200').value= '-14';
+  document.getElementById('nii_bf').value   = '-9.1';
+}
+
+// ── LCR REPORT ──────────────────────────────────────────────────────────
+async function generateLCR() {
+  const l1  = parseFloat(document.getElementById('hqla1').value)||0;
+  const l2a = parseFloat(document.getElementById('hqla2a').value)||0;
+  const l2b = parseFloat(document.getElementById('hqla2b').value)||0;
+  const out = parseFloat(document.getElementById('outflows').value)||1;
+  const inf = parseFloat(document.getElementById('inflows').value)||0;
+  const hqla= l1 + l2a*0.85 + l2b*0.50;
+  const net = Math.max(0, out - Math.min(inf, out*0.75));
+  const lcr = net > 0 ? hqla/net*100 : 0;
+
+  document.getElementById('lcrResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Rapor üretiliyor...</div>';
+  try {
+    const resp = await fetch('/api/regulatory/lcr', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        hqla_total:l1+l2a*0.85+l2b*0.50, hqla_level1:l1,
+        hqla_level2a:l2a*0.85, hqla_level2b:l2b*0.50,
+        outflows_total:out, inflows_total:inf, lcr:lcr,
+      })
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderLCR(d);
+  } catch(err) {
+    document.getElementById('lcrResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderLCR(d) {
+  const stCls = d.lcr_pct >= 100 ? 'status-ok' : 'status-fail';
+  const stIcon= d.lcr_pct >= 100 ? '✓' : '✗';
+  const rows  = d.rows.map(r => {
+    const isBold = ['A','B','C','D','E'].includes(r.kod);
+    return `<tr ${isBold?'style="background:rgba(37,99,235,0.04)"':''}>
+      <td style="${isBold?'font-weight:600;color:var(--text)':''}">${r.kod}</td>
+      <td style="${isBold?'font-weight:600;color:var(--text)':''}">${r.kalem}</td>
+      <td class="r" style="font-family:var(--font-mono);${isBold?'font-weight:600':''}">
+        ${typeof r.tutar==='number'?r.tutar.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2}):''}
+      </td>
+      <td style="font-size:0.65rem;color:var(--text-muted)">${r.not}</td>
+    </tr>`;
+  }).join('');
+
+  const warnHTML = d.uyari.join('<br>');
+  const warnCls  = d.lcr_pct < 100 ? 'rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3)'
+                 : d.lcr_pct < 110 ? 'rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3)'
+                 : 'rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3)';
+
+  document.getElementById('lcrResults').innerHTML = `
+    <div class="flex-between mb-2">
+      <span class="${stCls}">${stIcon} ${d.status} — LCR %${d.lcr_pct.toFixed(1)}</span>
+      <button class="btn btn-ghost" style="font-size:0.68rem" onclick="printReport('lcr')">🖨 Yazdır / PDF</button>
+    </div>
+    <div style="background:${warnCls};border-radius:var(--radius);padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.7rem">
+      ${warnHTML}
+    </div>
+    <div class="card">
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:0.75rem">
+        ${d.rapor_adi} · ${d.rapor_tarihi} · ${d.yasal_dayanak}
+      </div>
+      <table class="reg-table">
+        <thead><tr><th>Kod</th><th>Kalem</th><th class="r">Tutar (M)</th><th>Not</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+
+  // Store for print
+  window._lastLCR = d;
+}
+
+// ── IRRBB REPORT ─────────────────────────────────────────────────────────
+async function generateIRRBB() {
+  const tier1 = parseFloat(document.getElementById('tier1').value)||1500;
+  const eve_data = {
+    tier1_capital: tier1,
+    scenarios: {
+      parallel_up_200:   {eve_change: parseFloat(document.getElementById('eve_pu200').value)||0},
+      parallel_down_200: {eve_change: parseFloat(document.getElementById('eve_pd200').value)||0},
+      bear_flatten:      {eve_change: parseFloat(document.getElementById('eve_bf').value)||0},
+      bull_steepen:      {eve_change: parseFloat(document.getElementById('eve_bs').value)||0},
+      bear_steepen:      {eve_change: parseFloat(document.getElementById('eve_bst').value)||0},
+      bull_flatten:      {eve_change: parseFloat(document.getElementById('eve_bfl').value)||0},
+    }
+  };
+  const nii_data = {
+    scenarios: {
+      parallel_up_200: {nii_change: parseFloat(document.getElementById('nii_pu200').value)||0},
+      bear_flatten:    {nii_change: parseFloat(document.getElementById('nii_bf').value)||0},
+    }
+  };
+
+  document.getElementById('irrbbResults').innerHTML =
+    '<div class="loading"><div class="spinner"></div> IRRBB tablosu üretiliyor...</div>';
+  try {
+    const resp = await fetch('/api/regulatory/irrbb', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({eve_data, nii_data})
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderIRRBB(d);
+  } catch(err) {
+    document.getElementById('irrbbResults').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderIRRBB(d) {
+  const ozet  = d.ozet;
+  const stCls = ozet.ihlal_var ? 'status-fail' : 'status-ok';
+  const stLbl = ozet.ihlal_var ? '✗ IRRBB İHLAL' : '✓ IRRBB UYGUN';
+  const rows  = d.eve_rows.map(r => {
+    const cls = r.breach ? 'ihlal' : r.pct_tier1>10 ? 'uyari' : 'uygun';
+    return `<tr>
+      <td style="font-weight:500">${r.senaryo}</td>
+      <td class="r" style="color:${r.delta_eve_m<0?'var(--red)':'var(--green)'}">${r.delta_eve_m>=0?'+':''}${r.delta_eve_m.toFixed(1)}M</td>
+      <td class="r ${cls}">%${r.pct_tier1.toFixed(1)}</td>
+      <td class="r" style="color:${r.delta_nii_m<0?'var(--red)':'var(--green)'}">${r.delta_nii_m!==0?(r.delta_nii_m>=0?'+':'')+r.delta_nii_m.toFixed(1)+'M':'—'}</td>
+      <td class="${cls}">${r.durum}</td>
+    </tr>`;
+  }).join('');
+
+  const warnHTML = d.uyari.join('<br>');
+  const warnBg   = ozet.ihlal_var
+    ? 'rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.3)'
+    : 'rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.3)';
+
+  document.getElementById('irrbbResults').innerHTML = `
+    <div class="flex-between mb-2">
+      <span class="${stCls}">${stLbl}</span>
+      <button class="btn btn-ghost" style="font-size:0.68rem" onclick="printReport('irrbb')">🖨 Yazdır / PDF</button>
+    </div>
+    <div style="background:${warnBg};border-radius:var(--radius);padding:0.6rem 0.9rem;margin-bottom:0.75rem;font-size:0.7rem">
+      ${warnHTML}
+    </div>
+    <div class="card">
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:0.75rem">
+        ${d.rapor_adi} · ${d.rapor_tarihi} · Tier 1: ${d.tier1_capital.toFixed(0)}M
+      </div>
+      <table class="reg-table">
+        <thead><tr>
+          <th>Senaryo (BCBS d368)</th>
+          <th class="r">ΔEVE (M)</th><th class="r">ΔEVE / Tier 1</th>
+          <th class="r">ΔNII (M)</th><th>Durum</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.5rem;margin-top:0.75rem">
+        <div class="kpi-box">
+          <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">En Kötü ΔEVE</div>
+          <div style="font-family:var(--font-mono);font-size:0.95rem;color:var(--red)">${ozet.en_kötü_eve_m>=0?'+':''}${ozet.en_kötü_eve_m.toFixed(1)}M</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">%${ozet.en_kötü_tier1_pct.toFixed(1)} Tier 1</div>
+        </div>
+        <div class="kpi-box">
+          <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">En Kötü ΔNII</div>
+          <div style="font-family:var(--font-mono);font-size:0.95rem;color:var(--red)">${ozet.en_kötü_nii_m>=0?'+':''}${ozet.en_kötü_nii_m.toFixed(1)}M</div>
+        </div>
+        <div class="kpi-box">
+          <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted)">Basel III Limiti</div>
+          <div style="font-family:var(--font-mono);font-size:0.95rem;color:var(--text-muted)">%15 Tier 1</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">BCBS d368</div>
+        </div>
+      </div>
+    </div>`;
+
+  window._lastIRRBB = d;
+}
+
+// ── PRINT / PDF ─────────────────────────────────────────────────────────
+async function printReport(type) {
+  const d = type==='lcr' ? window._lastLCR : window._lastIRRBB;
+  if (!d) { alert('Önce rapor üretin.'); return; }
+  try {
+    const resp = await fetch('/api/regulatory/html', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({report_data: d, report_type: type})
+    });
+    const html = await resp.text();
+    const win  = window.open('', '_blank');
+    win.document.write(html);
+    win.document.close();
+    setTimeout(() => win.print(), 500);
+  } catch(err) { alert(err.message); }
+}
+</script>
+{% endblock %}

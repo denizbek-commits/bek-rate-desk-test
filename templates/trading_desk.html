@@ -1,0 +1,936 @@
+{% extends 'base.html' %}
+{% block title %}Trading Desk — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+/* ─── TAB SYSTEM ─────────────────────────────────────────────────── */
+.desk-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:1.25rem; }
+.desk-tab  { padding:0.5rem 1.4rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:3px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; margin-bottom:-2px; white-space:nowrap; }
+.desk-tab.active { color:var(--text); border-bottom-color:var(--accent); }
+
+/* ─── RATE BOARD ────────────────────────────────────────────────── */
+.rate-board { display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1.25rem; }
+.rate-tile  { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:0.55rem 0.9rem; min-width:110px; cursor:pointer; transition:border-color 0.15s; }
+.rate-tile:hover { border-color:var(--accent); }
+.rate-pair  { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); }
+.rate-mid   { font-family:var(--font-head); font-size:1.05rem; font-weight:700; color:var(--text); }
+.rate-chg   { font-size:0.62rem; font-family:var(--font-mono); }
+.rate-chg.up { color:var(--green); }
+.rate-chg.dn { color:var(--red); }
+
+/* ─── DEAL TICKET ───────────────────────────────────────────────── */
+.ticket { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }
+.ticket-header { background:var(--surface); padding:0.6rem 1rem; font-size:0.65rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); }
+.ticket-body { padding:1rem; }
+.ticket-row { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:0.6rem; }
+.ticket-field { display:flex; flex-direction:column; gap:0.2rem; }
+.ticket-label { font-size:0.58rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+
+.bid-ask { display:grid; grid-template-columns:1fr 1fr; gap:2px; border-radius:var(--radius); overflow:hidden; margin:0.5rem 0; }
+.bid-btn { background:rgba(239,68,68,.15); color:var(--red); border:1px solid rgba(239,68,68,.3); padding:0.6rem; text-align:center; cursor:pointer; transition:all 0.15s; }
+.ask-btn { background:rgba(16,185,129,.15); color:var(--green); border:1px solid rgba(16,185,129,.3); padding:0.6rem; text-align:center; cursor:pointer; transition:all 0.15s; }
+.bid-btn:hover { background:rgba(239,68,68,.3); }
+.ask-btn:hover { background:rgba(16,185,129,.3); }
+.ba-label { font-size:0.58rem; text-transform:uppercase; }
+.ba-rate  { font-family:var(--font-head); font-size:1.25rem; font-weight:800; }
+.ba-pip   { font-size:0.62rem; opacity:0.7; }
+
+/* ─── RESULT CARD ───────────────────────────────────────────────── */
+.result-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.85rem 1rem; margin-top:0.75rem; }
+.result-hero { font-family:var(--font-head); font-size:1.5rem; font-weight:800; }
+.result-row  { display:flex; justify-content:space-between; padding:0.32rem 0; border-bottom:1px solid var(--border-soft); font-size:0.71rem; }
+.result-label{ color:var(--text-muted); }
+.result-val  { font-family:var(--font-mono); font-weight:500; }
+
+/* ─── FORWARD CURVE ─────────────────────────────────────────────── */
+.curve-table { width:100%; border-collapse:collapse; font-size:0.69rem; }
+.curve-table th { text-align:left; padding:0.3rem 0.55rem; color:var(--text-muted); font-size:0.58rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.curve-table td { padding:0.35rem 0.55rem; border-bottom:1px solid var(--border-soft); font-variant-numeric:tabular-nums; }
+.curve-table tr.highlight td { background:rgba(37,99,235,.07); font-weight:600; }
+
+/* ─── POSITION BOOK ─────────────────────────────────────────────── */
+.pos-table { width:100%; border-collapse:collapse; font-size:0.7rem; }
+.pos-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.pos-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.pos-table .r { text-align:right; }
+.dir-long  { background:rgba(16,185,129,.12); color:var(--green); font-size:0.6rem; padding:1px 6px; border-radius:3px; font-weight:700; }
+.dir-short { background:rgba(239,68,68,.12);  color:var(--red);   font-size:0.6rem; padding:1px 6px; border-radius:3px; font-weight:700; }
+
+/* ─── CROSS MATRIX ──────────────────────────────────────────────── */
+.matrix-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:0.5rem; }
+.matrix-cell { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem 0.8rem; }
+.matrix-pair { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+.matrix-mid  { font-family:var(--font-head); font-size:1.1rem; font-weight:700; }
+.matrix-arb  { font-size:0.62rem; margin-top:0.2rem; }
+
+/* ─── SWAP ──────────────────────────────────────────────────────── */
+.swap-legs { display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; }
+.leg-card  { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.7rem 0.9rem; }
+.leg-title { font-size:0.62rem; text-transform:uppercase; letter-spacing:0.07em; margin-bottom:0.4rem; font-weight:600; }
+.near-card { border-top:2px solid var(--accent); }
+.far-card  { border-top:2px solid var(--gold); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>FX Trading Desk</h1>
+      <p>Spot fiyatlama · Forward · FX Swap · Pozisyon Defteri · Cross Rate Matrisi</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span id="liveRefreshLabel" style="font-size:0.6rem;color:var(--text-muted)"></span>
+      <button class="btn btn-ghost" id="liveToggleBtn" onclick="toggleLiveRefresh()">📡 Canlı Veri</button>
+      <button class="btn btn-ghost" onclick="loadSampleRates()">↺ Örnek Veri</button>
+      <button class="btn btn-primary" onclick="refreshCross()">⟳ Matrix Güncelle</button>
+    </div>
+  </div>
+</div>
+
+<!-- RATE BOARD -->
+<div class="rate-board" id="rateBoard">
+  <div style="font-size:0.65rem;color:var(--text-muted);display:flex;align-items:center;padding:0 0.25rem">Canlı Kurlar →</div>
+  <div class="rate-tile" onclick="setRateFromBoard('USDTRY')">
+    <div class="rate-pair">USD/TRY</div>
+    <div class="rate-mid" id="rb-USDTRY">—</div>
+    <div class="rate-chg" id="rc-USDTRY">—</div>
+  </div>
+  <div class="rate-tile" onclick="setRateFromBoard('EURTRY')">
+    <div class="rate-pair">EUR/TRY</div>
+    <div class="rate-mid" id="rb-EURTRY">—</div>
+    <div class="rate-chg" id="rc-EURTRY">—</div>
+  </div>
+  <div class="rate-tile" onclick="setRateFromBoard('GBPTRY')">
+    <div class="rate-pair">GBP/TRY</div>
+    <div class="rate-mid" id="rb-GBPTRY">—</div>
+    <div class="rate-chg" id="rc-GBPTRY">—</div>
+  </div>
+  <div class="rate-tile" onclick="setRateFromBoard('EURUSD')">
+    <div class="rate-pair">EUR/USD</div>
+    <div class="rate-mid" id="rb-EURUSD">—</div>
+    <div class="rate-chg" id="rc-EURUSD">—</div>
+  </div>
+  <div class="rate-tile">
+    <div class="rate-pair">Seans</div>
+    <div class="rate-mid" style="font-size:0.75rem" id="sessionStatus">—</div>
+    <div class="rate-chg" id="sessionTime" style="color:var(--text-muted)"></div>
+  </div>
+</div>
+
+<!-- TABS -->
+<div class="desk-tabs">
+  <button class="desk-tab active" id="tab-spot"     onclick="switchTab('spot')">💱 Spot FX</button>
+  <button class="desk-tab"        id="tab-forward"  onclick="switchTab('forward')">📅 Forward</button>
+  <button class="desk-tab"        id="tab-swap"     onclick="switchTab('swap')">🔄 FX Swap</button>
+  <button class="desk-tab"        id="tab-position" onclick="switchTab('position')">📋 Pozisyon</button>
+  <button class="desk-tab"        id="tab-cross"    onclick="switchTab('cross')">⊞ Cross Matrix</button>
+</div>
+
+<!-- ══ SPOT TAB ══ -->
+<div id="panel-spot">
+  <div class="grid-2">
+    <div class="ticket">
+      <div class="ticket-header">
+        <span>Deal Ticket — Spot FX</span>
+        <button class="btn btn-ghost" style="font-size:0.62rem;padding:2px 7px" onclick="spotSample()">Sample</button>
+      </div>
+      <div class="ticket-body">
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Parite</div>
+            <select class="form-select" id="sPair" onchange="updateSpotSpreads()">
+              <option value="USDTRY">USD/TRY</option>
+              <option value="EURTRY">EUR/TRY</option>
+              <option value="GBPTRY">GBP/TRY</option>
+              <option value="EURUSD">EUR/USD</option>
+            </select>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Müşteri Tipi</div>
+            <select class="form-select" id="sCustType">
+              <option value="corporate">Kurumsal</option>
+              <option value="retail">Bireysel</option>
+              <option value="vip">VIP / Prime</option>
+              <option value="interbank">Bankalararası</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Interbank Alış (Bid)</div>
+            <input class="form-input" id="sBid" type="number" step="0.0001" placeholder="44.8300"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Interbank Satış (Ask)</div>
+            <input class="form-input" id="sAsk" type="number" step="0.0001" placeholder="44.8700"/>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Tutar</div>
+            <input class="form-input" id="sAmount" type="number" placeholder="2000000"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Valör</div>
+            <select class="form-select" id="sValor">
+              <option value="spot">Spot (T+2)</option>
+              <option value="tom">Tom (T+1)</option>
+              <option value="tod">Today (T+0)</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-field" style="margin-bottom:0.6rem">
+          <div class="ticket-label">Custom Spread (pip) — boş = otomatik</div>
+          <input class="form-input" id="sCustomSpread" type="number" placeholder="opsiyonel"/>
+        </div>
+        <div class="ticket-label" style="margin-bottom:0.3rem">Bankanın Aksiyonu</div>
+        <div class="bid-ask">
+          <div class="bid-btn" onclick="execSpot('buy')" id="bidBtn">
+            <div class="ba-label">BUY (Müşteriden Al)</div>
+            <div class="ba-rate" id="spotBidDisplay">—</div>
+            <div class="ba-pip">Müşteri bu fiyattan satıyor</div>
+          </div>
+          <div class="ask-btn" onclick="execSpot('sell')" id="askBtn">
+            <div class="ba-label">SELL (Müşteriye Sat)</div>
+            <div class="ba-rate" id="spotAskDisplay">—</div>
+            <div class="ba-pip">Müşteri bu fiyattan alıyor</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="spotResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">💱</div>
+        <p>Bid veya Ask'a tıklayarak işlem başlat</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FORWARD TAB ══ -->
+<div id="panel-forward" style="display:none">
+  <div class="grid-2">
+    <div class="ticket">
+      <div class="ticket-header">
+        <span>Forward Fiyatlama</span>
+        <button class="btn btn-ghost" style="font-size:0.62rem;padding:2px 7px" onclick="fwdSample()">Sample</button>
+      </div>
+      <div class="ticket-body">
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Parite</div>
+            <select class="form-select" id="fPair">
+              <option value="USDTRY">USD/TRY</option>
+              <option value="EURTRY">EUR/TRY</option>
+              <option value="EURUSD">EUR/USD</option>
+            </select>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Müşteri Tipi</div>
+            <select class="form-select" id="fCustType">
+              <option value="corporate">Kurumsal</option>
+              <option value="retail">Bireysel</option>
+              <option value="vip">VIP</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Spot Mid</div>
+            <input class="form-input" id="fSpot" type="number" step="0.0001" placeholder="44.85"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Tenor</div>
+            <select class="form-select" id="fTenor" onchange="updateFwdDays()">
+              <option value="7">1W</option><option value="14">2W</option>
+              <option value="30">1M</option><option value="60">2M</option>
+              <option value="90" selected>3M</option><option value="180">6M</option>
+              <option value="270">9M</option><option value="360">1Y</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">USD Faizi (%)</div>
+            <input class="form-input" id="fRateBase" type="number" step="0.1" placeholder="4.5"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">TRY Faizi (%)</div>
+            <input class="form-input" id="fRateQuote" type="number" step="0.25" placeholder="42.5"/>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Tutar (USD)</div>
+            <input class="form-input" id="fAmount" type="number" placeholder="5000000"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Bankanın Aksiyonu</div>
+            <select class="form-select" id="fAction">
+              <option value="sell">Sell (Müşteriye Sat)</option>
+              <option value="buy">Buy (Müşteriden Al)</option>
+            </select>
+          </div>
+        </div>
+        <button class="btn btn-primary w-full" onclick="calcForward()">▶ Forward Hesapla</button>
+      </div>
+    </div>
+
+    <div id="fwdResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">📅</div>
+        <p>Parametreleri girin, Forward Hesapla'ya tıklayın.<br>
+        Tüm tenorlar için swap puanı tablosu otomatik üretilir.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ SWAP TAB ══ -->
+<div id="panel-swap" style="display:none">
+  <div class="grid-2">
+    <div class="ticket">
+      <div class="ticket-header">
+        <span>FX Swap Fiyatlama</span>
+        <button class="btn btn-ghost" style="font-size:0.62rem;padding:2px 7px" onclick="swapSample()">Sample</button>
+      </div>
+      <div class="ticket-body">
+        <div style="background:rgba(37,99,235,.07);border-radius:var(--radius);padding:0.5rem 0.7rem;font-size:0.65rem;color:var(--accent);margin-bottom:0.6rem">
+          FX Swap = Near Leg (spot) + Far Leg (forward). Kısa vadeli likidite için kullanılır.
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Interbank Bid</div>
+            <input class="form-input" id="swBid" type="number" step="0.0001" placeholder="44.83"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Interbank Ask</div>
+            <input class="form-input" id="swAsk" type="number" step="0.0001" placeholder="44.87"/>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Near Leg (gün)</div>
+            <select class="form-select" id="swNearDays">
+              <option value="0">Today (T+0)</option>
+              <option value="1">Tom (T+1)</option>
+              <option value="2" selected>Spot (T+2)</option>
+            </select>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Far Leg (gün)</div>
+            <select class="form-select" id="swFarDays">
+              <option value="9">1W (T+7)</option>
+              <option value="16">2W</option>
+              <option value="32" selected>1M</option>
+              <option value="62">2M</option>
+              <option value="92">3M</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">Tutar (USD)</div>
+            <input class="form-input" id="swAmount" type="number" placeholder="10000000"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">Near Leg Aksiyonu</div>
+            <select class="form-select" id="swNearAction">
+              <option value="sell">Near: Sell USD (TL al)</option>
+              <option value="buy">Near: Buy USD (TL ver)</option>
+            </select>
+          </div>
+        </div>
+        <div class="ticket-row">
+          <div class="ticket-field"><div class="ticket-label">USD Faizi (%)</div>
+            <input class="form-input" id="swRateUSD" type="number" step="0.1" value="4.5"/>
+          </div>
+          <div class="ticket-field"><div class="ticket-label">TRY Faizi (%)</div>
+            <input class="form-input" id="swRateTRY" type="number" step="0.25" value="42.5"/>
+          </div>
+        </div>
+        <button class="btn btn-primary w-full" onclick="calcSwap()">▶ Swap Hesapla</button>
+      </div>
+    </div>
+
+    <div id="swapResult">
+      <div class="coming-soon" style="min-height:200px">
+        <div class="coming-soon-icon">🔄</div>
+        <p>FX Swap: Near ve Far leg fiyatları, net TL maliyeti, yıllıklaştırılmış maliyet.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ POSITION TAB ══ -->
+<div id="panel-position" style="display:none">
+  <div class="flex-between mb-2">
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span style="font-size:0.7rem;color:var(--text-muted)">Güncel Kur:</span>
+      <input class="form-input" id="posRateUSD" type="number" step="0.01" placeholder="USD/TRY" style="width:90px"/>
+      <input class="form-input" id="posRateEUR" type="number" step="0.01" placeholder="EUR/TRY" style="width:90px"/>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-ghost" onclick="showAddPosition()">+ Pozisyon Ekle</button>
+      <button class="btn btn-primary" onclick="loadPositions()">⟳ MTM Güncelle</button>
+    </div>
+  </div>
+  <div id="positionBook">
+    <div class="coming-soon" style="min-height:200px">
+      <div class="coming-soon-icon">📋</div>
+      <p>Pozisyon defteri boş. + Pozisyon Ekle ile gün içi işlem kayıt edin.</p>
+    </div>
+  </div>
+
+  <!-- Add Position Form -->
+  <div id="addPosForm" style="display:none" class="card mt-2">
+    <div class="card-title">Yeni Pozisyon Kaydet</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.5rem">
+      <div class="form-group"><label class="form-label">Parite</label>
+        <select class="form-select" id="newPosPair">
+          <option value="USDTRY">USD/TRY</option>
+          <option value="EURTRY">EUR/TRY</option>
+          <option value="GBPTRY">GBP/TRY</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Yön</label>
+        <select class="form-select" id="newPosDir">
+          <option value="long">Long (USD al)</option>
+          <option value="short">Short (USD sat)</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Tutar (USD)</label>
+        <input class="form-input" id="newPosAmt" type="number" placeholder="1000000"/>
+      </div>
+      <div class="form-group"><label class="form-label">Giriş Kuru</label>
+        <input class="form-input" id="newPosRate" type="number" step="0.0001" placeholder="44.85"/>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Açıklama</label>
+      <input class="form-input" id="newPosNote" placeholder="örn. Müşteri hedge pozisyonu"/>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-primary" onclick="savePosition()">Kaydet</button>
+      <button class="btn btn-ghost"   onclick="document.getElementById('addPosForm').style.display='none'">İptal</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ CROSS MATRIX TAB ══ -->
+<div id="panel-cross" style="display:none">
+  <div class="card mb-2">
+    <div class="card-title">Kur Girişi</div>
+    <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:0.5rem">
+      <div class="form-group"><label class="form-label">USD/TRY</label><input class="form-input" id="cx-USDTRY" type="number" step="0.0001" placeholder="44.85"/></div>
+      <div class="form-group"><label class="form-label">EUR/TRY</label><input class="form-input" id="cx-EURTRY" type="number" step="0.0001" placeholder="52.10"/></div>
+      <div class="form-group"><label class="form-label">GBP/TRY</label><input class="form-input" id="cx-GBPTRY" type="number" step="0.0001" placeholder="57.50"/></div>
+      <div class="form-group"><label class="form-label">EUR/USD</label><input class="form-input" id="cx-EURUSD" type="number" step="0.0001" placeholder="1.0850"/></div>
+      <div class="form-group"><label class="form-label">GBP/USD</label><input class="form-input" id="cx-GBPUSD" type="number" step="0.0001" placeholder="1.2800"/></div>
+      <div class="form-group"><label class="form-label">Dünkü USD/TRY</label><input class="form-input" id="cx-prevUSDTRY" type="number" step="0.0001" placeholder="44.62"/></div>
+      <div class="form-group"><label class="form-label">Dünkü EUR/TRY</label><input class="form-input" id="cx-prevEURTRY" type="number" step="0.0001" placeholder="51.85"/></div>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-primary" onclick="refreshCross()">▶ Matrix Hesapla</button>
+      <button class="btn btn-ghost"   onclick="crossSample()">Sample</button>
+    </div>
+  </div>
+  <div id="crossResult">
+    <div class="coming-soon" style="min-height:150px">
+      <div class="coming-soon-icon">⊞</div>
+      <p>Kurları girin veya Sample yükleyin. Teorik cross rate ve arbitraj fırsatları gösterilir.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let currentRates = {};
+
+// ── TAB SYSTEM ──────────────────────────────────────────────────────────────
+function switchTab(t) {
+  ['spot','forward','swap','position','cross'].forEach(x => {
+    document.getElementById('panel-'+x).style.display = x===t?'':'none';
+    document.getElementById('tab-'+x).classList.toggle('active', x===t);
+  });
+  if (t === 'position') loadPositions();
+  if (t === 'cross' && Object.keys(currentRates).length) fillCrossFromRates();
+}
+
+// ── RATE BOARD ───────────────────────────────────────────────────────────────
+async function loadSampleRates() {
+  // Örnek veri (statik fallback) — Canlı Veri butonunu kullanın
+  const resp = await fetch('/api/trading/sample-market');
+  const d    = await resp.json();
+  currentRates = d;
+  updateRateBoard(d);
+  fillForwardFromRates(d);
+  const lbl = document.getElementById('liveRefreshLabel');
+  if (lbl) lbl.textContent = '📌 Örnek veri';
+}
+
+function updateRateBoard(d) {
+  const pairs = {USDTRY:'USD/TRY', EURTRY:'EUR/TRY', GBPTRY:'GBP/TRY', EURUSD:'EUR/USD'};
+  const prevs = {USDTRY:'prev_USDTRY', EURTRY:'prev_EURTRY', EURUSD:'prev_EURUSD'};
+  for (const [pair] of Object.entries(pairs)) {
+    const mid  = d[pair];
+    const prev = d[prevs[pair]] || mid;
+    if (!mid) continue;
+    const chg    = mid - prev;
+    const chgPct = ((chg/prev)*100).toFixed(2);
+    const el  = document.getElementById('rb-'+pair);
+    const chgEl = document.getElementById('rc-'+pair);
+    if (el) el.textContent = mid.toFixed(4);
+    if (chgEl) {
+      chgEl.textContent = `${chg>=0?'+':''}${chg.toFixed(4)} (${chgPct}%)`;
+      chgEl.className   = `rate-chg ${chg>=0?'up':'dn'}`;
+    }
+  }
+  // Session status
+  const now = new Date();
+  const h   = now.getHours(), m = now.getMinutes();
+  const inSession = (h >= 8 && h < 17) || (h === 17 && m === 0);
+  document.getElementById('sessionStatus').textContent = inSession ? '🟢 AÇIK' : '🔴 KAPALI';
+  document.getElementById('sessionStatus').style.color = inSession ? 'var(--green)' : 'var(--red)';
+  document.getElementById('sessionTime').textContent =
+    `${now.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit'})} Istanbul`;
+}
+
+function setRateFromBoard(pair) {
+  if (!currentRates[pair]) return;
+  const mid   = currentRates[pair];
+  const spread= pair.includes('TRY') ? 0.04 : 0.0004;
+  document.getElementById('sBid').value  = (mid - spread/2).toFixed(4);
+  document.getElementById('sAsk').value  = (mid + spread/2).toFixed(4);
+  document.getElementById('sPair').value = pair;
+  updateSpotSpreads();
+  switchTab('spot');
+}
+
+function fillForwardFromRates(d) {
+  if (d.USDTRY) document.getElementById('fSpot').value      = d.USDTRY;
+  if (d.rate_try)document.getElementById('fRateQuote').value = d.rate_try;
+  if (d.rate_usd)document.getElementById('fRateBase').value  = d.rate_usd;
+  if (d.USDTRY) { document.getElementById('swBid').value    = (d.USDTRY-0.02).toFixed(4); document.getElementById('swAsk').value=(d.USDTRY+0.02).toFixed(4); }
+  if (d.rate_try)document.getElementById('swRateTRY').value  = d.rate_try;
+  if (d.rate_usd)document.getElementById('swRateUSD').value  = d.rate_usd;
+}
+
+function fillCrossFromRates() {
+  const d = currentRates;
+  ['USDTRY','EURTRY','GBPTRY','EURUSD','GBPUSD'].forEach(p => {
+    const el = document.getElementById('cx-'+p);
+    if (el && d[p]) el.value = d[p];
+  });
+  ['USDTRY','EURTRY','EURUSD'].forEach(p => {
+    const k  = 'prev_'+p;
+    const el = document.getElementById('cx-prev'+p);   // matches id="cx-prevUSDTRY"
+    if (el && d[k]) el.value = d[k];
+  });
+}
+
+// ── SPOT FX ─────────────────────────────────────────────────────────────────
+function updateSpotSpreads() {
+  const bid = parseFloat(document.getElementById('sBid').value);
+  const ask = parseFloat(document.getElementById('sAsk').value);
+  if (!bid || !ask) return;
+  const mid = (bid+ask)/2;
+  document.getElementById('spotBidDisplay').textContent = bid.toFixed(4);
+  document.getElementById('spotAskDisplay').textContent = ask.toFixed(4);
+}
+
+function spotSample() {
+  document.getElementById('sPair').value        = 'EURTRY';
+  document.getElementById('sBid').value         = '52.07';
+  document.getElementById('sAsk').value         = '52.13';
+  document.getElementById('sAmount').value      = '2000000';
+  document.getElementById('sCustType').value    = 'corporate';
+  document.getElementById('sValor').value       = 'spot';
+  document.getElementById('sCustomSpread').value= '';
+  updateSpotSpreads();
+}
+
+async function execSpot(action) {
+  const payload = {
+    base_pair:          document.getElementById('sPair').value,
+    spot_bid:           parseFloat(document.getElementById('sBid').value),
+    spot_ask:           parseFloat(document.getElementById('sAsk').value),
+    action,
+    amount:             parseFloat(document.getElementById('sAmount').value)||1000000,
+    amount_ccy:         'base',
+    customer_type:      document.getElementById('sCustType').value,
+    value_date:         document.getElementById('sValor').value,
+    custom_spread_pips: document.getElementById('sCustomSpread').value
+      ? parseFloat(document.getElementById('sCustomSpread').value) : undefined,
+  };
+  try {
+    const resp = await fetch('/api/trading/spot', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderSpotResult(d, action);
+  } catch(err) {
+    document.getElementById('spotResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderSpotResult(d, action) {
+  const aColor = action==='sell' ? 'var(--green)' : 'var(--accent)';
+  const aLabel = action==='sell' ? 'SELL — Müşteriye Sattık' : 'BUY — Müşteriden Aldık';
+  document.getElementById('spotResult').innerHTML = `
+    <div class="result-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.75rem">
+        <div>
+          <div style="font-size:0.62rem;color:var(--text-muted);text-transform:uppercase">${d.pair} SPOT — ${d.customer_label}</div>
+          <div class="result-hero" style="color:${aColor}">${d.customer_rate}</div>
+          <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.2rem">${aLabel}</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:0.62rem;color:var(--text-muted)">Banka Kârı</div>
+          <div style="font-family:var(--font-head);font-size:1.2rem;color:var(--gold)">${d.pnl_pips} pip</div>
+          <div style="font-size:0.7rem;color:var(--green)">${d.pnl_total_quote.toLocaleString('tr-TR')} ${d.quote_ccy}</div>
+        </div>
+      </div>
+      <div class="result-row"><span class="result-label">Interbank Mid</span><span class="result-val">${d.ib_mid}</span></div>
+      <div class="result-row"><span class="result-label">Interbank Bid/Ask</span><span class="result-val">${d.ib_bid} / ${d.ib_ask}</span></div>
+      <div class="result-row"><span class="result-label">Müşteri Fiyatı</span><span class="result-val" style="color:${aColor}">${d.customer_rate}</span></div>
+      <div class="result-row"><span class="result-label">Müşteri Spread</span><span class="result-val">${d.cust_spread_pips} pip</span></div>
+      <div class="result-row"><span class="result-label">Base Tutar</span><span class="result-val">${d.base_amount.toLocaleString('tr-TR')} ${d.base_ccy}</span></div>
+      <div class="result-row"><span class="result-label">Quote Tutar</span><span class="result-val">${d.quote_amount.toLocaleString('tr-TR')} ${d.quote_ccy}</span></div>
+      <div class="result-row"><span class="result-label">Valör</span><span class="result-val">${d.value_label}</span></div>
+      <div class="result-row" style="border:none"><span class="result-label">Hedge Kuru</span><span class="result-val">${d.bank_hedge_rate}</span></div>
+    </div>
+    <button class="btn btn-ghost w-full mt-1" style="font-size:0.68rem"
+      onclick="quickSavePosition('${d.pair}','${action==='sell'?'short':'long'}',${d.base_amount},${d.customer_rate})">
+      📋 Pozisyon Defterine Kaydet
+    </button>`;
+}
+
+// ── FORWARD ──────────────────────────────────────────────────────────────────
+function fwdSample() {
+  document.getElementById('fPair').value      = 'USDTRY';
+  document.getElementById('fSpot').value      = '44.85';
+  document.getElementById('fTenor').value     = '90';
+  document.getElementById('fRateBase').value  = '4.5';
+  document.getElementById('fRateQuote').value = '42.5';
+  document.getElementById('fAmount').value    = '5000000';
+  document.getElementById('fAction').value    = 'sell';
+  document.getElementById('fCustType').value  = 'corporate';
+}
+
+async function calcForward() {
+  const tenor = parseInt(document.getElementById('fTenor').value);
+  const labels= {7:'1W',14:'2W',30:'1M',60:'2M',90:'3M',180:'6M',270:'9M',360:'1Y'};
+  const payload = {
+    pair:        document.getElementById('fPair').value,
+    spot_mid:    parseFloat(document.getElementById('fSpot').value),
+    rate_base:   parseFloat(document.getElementById('fRateBase').value),
+    rate_quote:  parseFloat(document.getElementById('fRateQuote').value),
+    tenor_days:  tenor,
+    tenor_label: labels[tenor]||tenor+'D',
+    customer_type:document.getElementById('fCustType').value,
+    amount:      parseFloat(document.getElementById('fAmount').value)||1000000,
+    action:      document.getElementById('fAction').value,
+  };
+  try {
+    const resp = await fetch('/api/trading/forward', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderForwardResult(d);
+  } catch(err) {
+    document.getElementById('fwdResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderForwardResult(d) {
+  const curveRows = d.forward_curve.map(r => {
+    const isSelected = r.days === d.tenor_days;
+    return `<tr class="${isSelected?'highlight':''}">
+      <td>${r.tenor}</td>
+      <td style="font-family:var(--font-mono)">${r.forward_mid}</td>
+      <td style="font-family:var(--font-mono);color:var(--gold)">${r.swap_points_pips>0?'+':''}${r.swap_points_pips.toFixed(4)}</td>
+      <td style="font-family:var(--font-mono);color:${r.premium_pct>0?'var(--red)':'var(--green)'}">${r.premium_pct>0?'+':''}${r.premium_pct}%</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('fwdResult').innerHTML = `
+    <div class="result-card mb-1">
+      <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:0.4rem">${d.pair} ${d.tenor_label} FORWARD</div>
+      <div class="result-hero" style="color:var(--accent)">${d.customer_rate}</div>
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-top:0.15rem">Spot: ${d.spot_mid} → Forward: ${d.forward_mid} (+${d.swap_points.toFixed(4)} TL)</div>
+      <hr class="sep"/>
+      <div class="result-row"><span class="result-label">Swap Puanı</span><span class="result-val" style="color:var(--gold)">+${d.swap_points.toFixed(4)} TL (+${d.premium_pct}%)</span></div>
+      <div class="result-row"><span class="result-label">Müşteri Bid/Ask</span><span class="result-val">${d.cust_bid} / ${d.cust_ask}</span></div>
+      <div class="result-row"><span class="result-label">Valör Tarihi</span><span class="result-val">${d.value_date}</span></div>
+      <div class="result-row" style="border:none"><span class="result-label">Yorum</span></div>
+      <div style="font-size:0.65rem;color:var(--gold);margin-top:0.3rem;line-height:1.6">${d.interpretation}</div>
+    </div>
+    <div class="card">
+      <div class="card-title">Forward Curve — Tüm Tenorlar</div>
+      <table class="curve-table">
+        <thead><tr><th>Tenor</th><th>Forward Mid</th><th>Swap Puanı</th><th>Premium</th></tr></thead>
+        <tbody>${curveRows}</tbody>
+      </table>
+    </div>`;
+}
+
+// ── FX SWAP ──────────────────────────────────────────────────────────────────
+function swapSample() {
+  document.getElementById('swBid').value        = '44.83';
+  document.getElementById('swAsk').value        = '44.87';
+  document.getElementById('swNearDays').value   = '2';
+  document.getElementById('swFarDays').value    = '32';
+  document.getElementById('swAmount').value     = '10000000';
+  document.getElementById('swNearAction').value = 'sell';
+  document.getElementById('swRateUSD').value    = '4.5';
+  document.getElementById('swRateTRY').value    = '42.5';
+}
+
+async function calcSwap() {
+  const payload = {
+    pair:         'USDTRY',
+    spot_bid:     parseFloat(document.getElementById('swBid').value),
+    spot_ask:     parseFloat(document.getElementById('swAsk').value),
+    near_action:  document.getElementById('swNearAction').value.split(' ')[1]?.toLowerCase()||'sell',
+    near_days:    parseInt(document.getElementById('swNearDays').value),
+    far_days:     parseInt(document.getElementById('swFarDays').value),
+    amount:       parseFloat(document.getElementById('swAmount').value)||10000000,
+    rate_usd:     parseFloat(document.getElementById('swRateUSD').value),
+    rate_try:     parseFloat(document.getElementById('swRateTRY').value),
+  };
+  // Fix near action parsing
+  const naSelect = document.getElementById('swNearAction').value;
+  payload.near_action = naSelect.includes('sell') ? 'sell' : 'buy';
+
+  try {
+    const resp = await fetch('/api/trading/fx-swap', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderSwapResult(d);
+  } catch(err) {
+    document.getElementById('swapResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderSwapResult(d) {
+  document.getElementById('swapResult').innerHTML = `
+    <div class="result-card mb-1">
+      <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:0.5rem">USD/TRY FX SWAP — ${d.tenor_days} GÜN</div>
+      <div class="swap-legs">
+        <div class="leg-card near-card">
+          <div class="leg-title" style="color:var(--accent)">📥 Near Leg — ${d.near_date}</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem">${d.near_rate}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted)">${d.near_action.toUpperCase()} ${(d.amount_usd/1e6).toFixed(1)}M USD</div>
+          <div style="font-size:0.68rem;color:var(--green)">TL ${d.near_tl>0?'alındı':'ödendi'}: ${Math.abs(d.near_tl).toLocaleString('tr-TR')}</div>
+        </div>
+        <div class="leg-card far-card">
+          <div class="leg-title" style="color:var(--gold)">📤 Far Leg — ${d.far_date}</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem">${d.far_rate}</div>
+          <div style="font-size:0.68rem;color:var(--text-muted)">${d.far_action.toUpperCase()} ${(d.amount_usd/1e6).toFixed(1)}M USD</div>
+          <div style="font-size:0.68rem;color:var(--red)">TL ${d.far_tl>0?'ödenecek':'alınacak'}: ${Math.abs(d.far_tl).toLocaleString('tr-TR')}</div>
+        </div>
+      </div>
+      <hr class="sep"/>
+      <div class="result-row"><span class="result-label">Net TL Maliyeti</span><span class="result-val" style="color:var(--red)">${d.net_tl_flow.toLocaleString('tr-TR')} TL</span></div>
+      <div class="result-row"><span class="result-label">Yıllıklaştırılmış Maliyet</span><span class="result-val" style="color:var(--gold)">%${d.annualized_cost_pct}</span></div>
+      <div class="result-row" style="border:none"><span class="result-label">Swap Puanı</span><span class="result-val">${d.swap_points_pips>0?'+':''}${d.swap_points_pips.toFixed(4)} TL</span></div>
+      <div style="background:rgba(37,99,235,.07);border-radius:var(--radius);padding:0.5rem 0.7rem;font-size:0.65rem;color:var(--accent);margin-top:0.5rem">${d.alm_note}</div>
+    </div>`;
+}
+
+// ── POSITIONS ────────────────────────────────────────────────────────────────
+async function loadPositions() {
+  const usd = document.getElementById('posRateUSD').value;
+  const eur = document.getElementById('posRateEUR').value;
+  const qs  = new URLSearchParams();
+  if (usd) qs.set('USDTRY', usd);
+  if (eur) qs.set('EURTRY', eur);
+  try {
+    const resp = await fetch('/api/trading/positions?' + qs);
+    const d    = await resp.json();
+    renderPositionBook(d);
+  } catch(err) {}
+}
+
+function renderPositionBook(d) {
+  if (!d.positions?.length) {
+    document.getElementById('positionBook').innerHTML =
+      '<div class="coming-soon" style="min-height:150px"><div class="coming-soon-icon">📋</div><p>Açık pozisyon yok</p></div>';
+    return;
+  }
+  const pnlColor = d.total_pnl >= 0 ? 'var(--green)' : 'var(--red)';
+  const rows = d.positions.map(p => {
+    const pnlCls = p.mtm_pnl >= 0 ? 'pos' : 'neg';
+    return `<tr>
+      <td style="font-weight:500">${p.id}</td>
+      <td>${p.pair}</td>
+      <td><span class="${p.direction==='long'?'dir-long':'dir-short'}">${p.direction.toUpperCase()}</span></td>
+      <td class="r">${(p.amount/1e6).toFixed(1)}M</td>
+      <td class="r" style="font-family:var(--font-mono)">${p.entry_rate}</td>
+      <td class="r" style="font-family:var(--font-mono)">${p.current_rate}</td>
+      <td class="r ${pnlCls}">${p.mtm_pnl>=0?'+':''}${p.mtm_pnl.toLocaleString('tr-TR')}</td>
+      <td><button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 6px;color:var(--red)"
+        onclick="closePos('${p.id}')">Kapat</button></td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('positionBook').innerHTML = `
+    <div class="kpi-strip mb-1">
+      <div class="stat-box"><div class="stat-label">Açık Pozisyon</div><div class="stat-value">${d.n_open}</div></div>
+      <div class="stat-box"><div class="stat-label">Toplam MTM P&L</div><div class="stat-value" style="color:${pnlColor}">${d.total_pnl>=0?'+':''}${d.total_pnl.toLocaleString('tr-TR')} TL</div></div>
+      ${Object.entries(d.totals||{}).map(([ccy,t]) =>
+        `<div class="stat-box"><div class="stat-label">${ccy} Net</div><div class="stat-value ${t.net>=0?'positive':'negative'}">${t.net>=0?'+':''}${(t.net/1e6).toFixed(1)}M</div></div>`
+      ).join('')}
+    </div>
+    <table class="pos-table">
+      <thead><tr><th>ID</th><th>Parite</th><th>Yön</th><th class="r">Tutar</th>
+        <th class="r">Giriş</th><th class="r">Güncel</th><th class="r">MTM P&L</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+function showAddPosition() {
+  document.getElementById('addPosForm').style.display =
+    document.getElementById('addPosForm').style.display === 'none' ? '' : 'none';
+}
+
+async function savePosition() {
+  const trade = {
+    pair:       document.getElementById('newPosPair').value,
+    direction:  document.getElementById('newPosDir').value,
+    amount:     parseFloat(document.getElementById('newPosAmt').value)||0,
+    entry_rate: parseFloat(document.getElementById('newPosRate').value)||0,
+    note:       document.getElementById('newPosNote').value,
+  };
+  if (!trade.amount || !trade.entry_rate) { alert('Tutar ve giriş kuru zorunlu.'); return; }
+  await fetch('/api/trading/positions', {method:'POST',
+    headers:{'Content-Type':'application/json'}, body:JSON.stringify(trade)});
+  document.getElementById('addPosForm').style.display = 'none';
+  loadPositions();
+}
+
+async function quickSavePosition(pair, direction, amount, entry_rate) {
+  await fetch('/api/trading/positions', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({pair, direction, amount, entry_rate, note:'Spot işlemden kayıt'})});
+  showToast('Pozisyon kaydedildi →');
+}
+
+async function closePos(id) {
+  const rate = prompt('Kapanış kuru:');
+  if (!rate) return;
+  await fetch(`/api/trading/positions/${id}?rate=${rate}`, {method:'DELETE'});
+  loadPositions();
+}
+
+// ── CROSS MATRIX ─────────────────────────────────────────────────────────────
+function crossSample() {
+  const s = {USDTRY:'44.85',EURTRY:'52.10',GBPTRY:'57.50',EURUSD:'1.0850',GBPUSD:'1.2800'};
+  const p = {'prevUSDTRY':'44.62','prevEURTRY':'51.85','prevEURUSD':'1.0820'};
+  Object.entries(s).forEach(([k,v]) => { const el=document.getElementById('cx-'+k); if(el) el.value=v; });
+  Object.entries(p).forEach(([k,v]) => { const el=document.getElementById('cx-'+k); if(el) el.value=v; });
+  refreshCross();
+}
+
+async function refreshCross() {
+  const gv = id => { const el=document.getElementById(id); return el ? parseFloat(el.value)||0 : 0; };
+  const payload = {
+    USDTRY:      gv('cx-USDTRY'),
+    EURTRY:      gv('cx-EURTRY'),
+    GBPTRY:      gv('cx-GBPTRY'),
+    EURUSD:      gv('cx-EURUSD'),
+    GBPUSD:      gv('cx-GBPUSD'),
+    prev_USDTRY: gv('cx-prevUSDTRY') || gv('cx-USDTRY'),
+    prev_EURTRY: gv('cx-prevEURTRY') || gv('cx-EURTRY'),
+    prev_EURUSD: gv('cx-prevEURUSD') || gv('cx-EURUSD'),
+  };
+  if (!payload.USDTRY) { crossSample(); return; }
+  document.getElementById('crossResult').innerHTML =
+    '<div class="loading" style="padding:2rem"><div class="spinner"></div> Hesaplanıyor...</div>';
+  try {
+    const resp = await fetch('/api/trading/cross-rates', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderCross(d);
+  } catch(err) {
+    document.getElementById('crossResult').innerHTML =
+      '<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>' + err.message + '</p></div>';
+  }
+}
+
+function renderCross(d) {
+  const cells = d.matrix.map(p => {
+    const chgCls = p.change > 0 ? 'var(--red)' : p.change < 0 ? 'var(--green)' : 'var(--text-muted)';
+    const hasArb = p.arb !== undefined && Math.abs(p.arb) > 0.10;
+    return `<div class="matrix-cell ${hasArb?'arb-alert':''}">
+      <div class="matrix-pair">${p.pair}</div>
+      <div class="matrix-mid">${p.mid.toFixed(4)}</div>
+      <div class="matrix-arb" style="color:${chgCls}">${p.direction} ${p.change>0?'+':''}${p.change.toFixed(4)} (${p.change_pct>0?'+':''}${p.change_pct}%)</div>
+      ${p.theoretical !== undefined ? `<div style="font-size:0.58rem;color:var(--text-muted);margin-top:0.2rem">Teorik: ${p.theoretical} ${Math.abs(p.arb)>0.10?'<span style="color:var(--gold)">⚠ arb</span>':''}</div>` : ''}
+    </div>`;
+  }).join('');
+
+  const arbHTML = d.arbitrage_opps?.length
+    ? `<div class="card" style="border-left:3px solid var(--gold)">
+        <div class="card-title">⚠️ Arbitraj Fırsatı</div>
+        ${d.arbitrage_opps.map(a=>`<div style="font-size:0.7rem;color:var(--gold);padding:0.3rem 0">${a.note}</div>`).join('')}
+      </div>`
+    : '<div style="font-size:0.7rem;color:var(--text-muted);padding:0.4rem">Önemli arbitraj fırsatı tespit edilmedi</div>';
+
+  document.getElementById('crossResult').innerHTML = `
+    <div class="kpi-strip mb-1">
+      <div class="stat-box"><div class="stat-label">TL Durumu</div><div class="stat-value" style="color:${d.tl_vs_usd_pct>0?'var(--red)':'var(--green)'}">${d.tl_status}</div><div class="stat-sub">USD/TRY ${d.tl_vs_usd_pct>0?'+':''}${d.tl_vs_usd_pct.toFixed(2)}%</div></div>
+      <div class="stat-box"><div class="stat-label">EUR/TRY Teorik</div><div class="stat-value">${d.eur_try_theoretical}</div><div class="stat-sub">Piyasa: ${d.rates.EURTRY}</div></div>
+      <div class="stat-box"><div class="stat-label">EUR/TRY Arbitraj</div><div class="stat-value" style="color:${Math.abs(d.eur_try_arb)>0.1?'var(--gold)':'var(--text-muted)'}">${d.eur_try_arb>0?'+':''}${d.eur_try_arb} (${d.eur_try_arb_pct>0?'+':''}${d.eur_try_arb_pct}%)</div></div>
+    </div>
+    <div class="matrix-grid mb-1">${cells}</div>
+    ${arbHTML}
+    <div style="font-size:0.62rem;color:var(--text-muted);margin-top:0.5rem">Güncelleme: ${d.generated_at}</div>`;
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);
+}
+
+// ── LIVE RATE AUTO-REFRESH ────────────────────────────────────────────────────
+let liveRefreshInterval = null;
+let liveRateEnabled = false;
+
+async function loadLiveRates() {
+  try {
+    const resp = await fetch('/api/trading/live-rates');
+    const d    = await resp.json();
+    if (d.error || !d.USDTRY) return;
+    currentRates = d;
+    updateRateBoard(d);
+    fillForwardFromRates(d);
+    // Show live indicator
+    const src = d._source === 'live' ? '🟢 LIVE' : '🟡 CACHED';
+    const refreshedEl = document.getElementById('liveRefreshLabel');
+    if (refreshedEl) refreshedEl.textContent = `${src} · ${d._refreshed || ''}`;
+  } catch(e) {}
+}
+
+function toggleLiveRefresh() {
+  liveRateEnabled = !liveRateEnabled;
+  const btn = document.getElementById('liveToggleBtn');
+  if (liveRateEnabled) {
+    loadLiveRates();
+    liveRefreshInterval = setInterval(loadLiveRates, 60000);
+    if (btn) { btn.textContent = '⏸ Canlı Veri Aktif'; btn.className = 'btn btn-primary'; }
+  } else {
+    clearInterval(liveRefreshInterval);
+    if (btn) { btn.textContent = '📡 Canlı Veri'; btn.className = 'btn btn-ghost'; }
+  }
+}
+
+// Init — load once on page open (uses live rates if available)
+loadLiveRates().then(() => {
+  // If live data loaded, enable auto-refresh
+  if (currentRates.USDTRY) {
+    const btn = document.getElementById('liveToggleBtn');
+    // Don't auto-enable interval, let user decide
+  }
+});
+
+setInterval(() => {
+  const now = new Date();
+  const h   = now.getHours(), m = now.getMinutes();
+  const inSession = (h >= 8 && h < 17) || (h === 17 && m === 0);
+  const el = document.getElementById('sessionStatus');
+  if (el) { el.textContent = inSession?'🟢 AÇIK':'🔴 KAPALI'; el.style.color=inSession?'var(--green)':'var(--red)'; }
+  const te = document.getElementById('sessionTime');
+  if (te) te.textContent = now.toLocaleTimeString('tr-TR',{hour:'2-digit',minute:'2-digit',second:'2-digit'})+' IST';
+}, 1000);
+</script>
+{% endblock %}

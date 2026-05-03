@@ -1,0 +1,188 @@
+{% extends "base.html" %}
+{% block title %}Gün Sonu Brief — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+.eod-section {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1.1rem 1.4rem; margin-bottom: 1rem;
+}
+.eod-section-title {
+  font-size: 0.8rem; font-weight: 700; font-family: 'Syne', sans-serif;
+  margin-bottom: 0.7rem; color: var(--text-primary);
+}
+.eod-item {
+  font-size: 0.72rem; color: var(--text-secondary); line-height: 1.6;
+  padding: 0.2rem 0; display: flex; gap: 0.4rem; align-items: baseline;
+}
+.eod-item::before { content: '▸'; color: var(--accent); flex-shrink: 0; }
+.eod-item.warn  { color: var(--gold); }
+.eod-item.alert { color: var(--red); }
+.eod-item.good  { color: var(--green); }
+
+.eod-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+
+.meta-strip {
+  display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;
+  margin-bottom: 1.2rem; padding: 0.6rem 1rem;
+  background: var(--panel); border-radius: 6px; border: 1px solid var(--border);
+}
+.meta-badge {
+  font-size: 0.62rem; padding: 2px 8px; border-radius: 10px;
+  background: rgba(37,99,235,.12); color: var(--accent);
+  border: 1px solid rgba(37,99,235,.25);
+}
+
+.change-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.66rem; font-family: 'DM Mono', monospace;
+  padding: 3px 8px; border-radius: 6px; margin: 2px;
+}
+.change-chip.up   { background: rgba(239,68,68,.1);  color: var(--red);   border:1px solid rgba(239,68,68,.2);  }
+.change-chip.down { background: rgba(16,185,129,.1); color: var(--green); border:1px solid rgba(16,185,129,.2); }
+.change-chip.flat { background: var(--panel);         color: var(--text-muted); border:1px solid var(--border); }
+
+.rag-dot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; }
+.rag-dot.green { background:var(--green); }
+.rag-dot.amber { background:var(--gold);  }
+.rag-dot.red   { background:var(--red);   }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding:1.5rem 1.75rem">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div>
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:0.3rem">Otomatik Rapor</div>
+      <h1 style="font-size:1.35rem;font-weight:800;font-family:'Syne',sans-serif;margin:0">Gün Sonu Brief</h1>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center">
+      <span id="genTime" style="font-size:0.65rem;color:var(--text-muted)">—</span>
+      <button class="btn btn-accent" onclick="generateBrief(false)" id="genBtn" style="font-size:0.72rem">
+        ⚡ Üret &amp; Güncelle
+      </button>
+      <button class="btn btn-ghost" onclick="loadCached()" style="font-size:0.72rem">📋 Son Kayıt</button>
+      <button class="btn btn-ghost" onclick="window.print()" style="font-size:0.72rem">🖨 Yazdır</button>
+    </div>
+  </div>
+
+  <!-- Meta strip -->
+  <div class="meta-strip" id="metaStrip">
+    <span style="font-size:0.65rem;color:var(--text-muted)">Brief hazır değil — "Üret & Güncelle" butonuna basın.</span>
+  </div>
+
+  <!-- Piyasa Değişim Chips -->
+  <div id="changeBand" style="margin-bottom:1rem;display:none">
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.09em;color:var(--text-muted);margin-bottom:0.5rem">Gün İçi Hareketler</div>
+    <div id="changeChips"></div>
+  </div>
+
+  <!-- Main Sections -->
+  <div class="eod-grid" id="sectionsTop"></div>
+  <div id="sectionsBottom"></div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function generateBrief(useCache) {
+  const btn = document.getElementById('genBtn');
+  btn.textContent = '⏳ Üretiliyor...';
+  btn.disabled = true;
+
+  const url = useCache ? '/api/eod/cached' : '/api/eod/generate';
+  fetch(url)
+    .then(r => r.json())
+    .then(data => {
+      btn.textContent = '⚡ Üret & Güncelle';
+      btn.disabled = false;
+      renderBrief(data);
+    })
+    .catch(e => {
+      btn.textContent = '✗ Hata';
+      btn.disabled = false;
+      console.error(e);
+    });
+}
+
+function loadCached() {
+  generateBrief(true);
+}
+
+function renderBrief(data) {
+  if (!data || !data.narrative) {
+    document.getElementById('metaStrip').innerHTML =
+      '<span style="color:var(--red)">Veri yüklenemedi.</span>';
+    return;
+  }
+
+  const n = data.narrative;
+  const limits = data.limits || {};
+
+  // Meta strip
+  const ragDot = `<span class="rag-dot ${limits.overall_rag || 'green'}"></span>`;
+  document.getElementById('metaStrip').innerHTML = `
+    <span style="font-size:0.72rem;font-weight:600;color:var(--text-primary)">${n.date || ''}</span>
+    <span class="meta-badge">Saat: ${n.generated_at || '—'}</span>
+    <span class="meta-badge">${limits.position_count || ''} Pozisyon</span>
+    ${ragDot}<span style="font-size:0.65rem">${limits.overall_tr || 'Normal'}</span>
+  `;
+  document.getElementById('genTime').textContent = 'Üretildi: ' + (n.generated_at || '—');
+
+  // Change chips
+  const changes = data.changes || {};
+  const allChips = [];
+  const renderChips = (curveChanges, prefix) => {
+    if (!curveChanges) return;
+    for (const [k, v] of Object.entries(curveChanges)) {
+      if (Math.abs(v) < 0.005) continue;
+      const cls = v > 0 ? 'up' : 'down';
+      const arrow = v > 0 ? '↑' : '↓';
+      allChips.push(`<span class="change-chip ${cls}">${prefix}${k} ${arrow}${Math.abs(v).toFixed(2)}</span>`);
+    }
+  };
+  renderChips(changes.us_curve, 'UST ');
+  renderChips(changes.tr_curve, 'TR ');
+  renderChips(changes.fx, '');
+
+  if (allChips.length > 0) {
+    document.getElementById('changeBand').style.display = 'block';
+    document.getElementById('changeChips').innerHTML = allChips.join('');
+  }
+
+  // Sections
+  const sections = n.sections || [];
+  const topHTML   = [];
+  const bottomHTML = [];
+
+  sections.forEach((sec, i) => {
+    const itemsHTML = sec.items.map(item => {
+      let cls = '';
+      if (item.includes('🔴') || item.includes('AŞIM')) cls = 'alert';
+      else if (item.includes('🟡') || item.includes('⚠'))  cls = 'warn';
+      else if (item.includes('✓'))  cls = 'good';
+      return `<div class="eod-item ${cls}">${item}</div>`;
+    }).join('');
+
+    const card = `
+      <div class="eod-section">
+        <div class="eod-section-title">${sec.title}</div>
+        ${itemsHTML}
+      </div>`;
+
+    if (i < 4) topHTML.push(card);
+    else bottomHTML.push(card);
+  });
+
+  // First 4 in 2-col grid, rest full width
+  document.getElementById('sectionsTop').innerHTML = topHTML.join('');
+  document.getElementById('sectionsBottom').innerHTML = bottomHTML.join('');
+}
+
+// Auto-load cache on open
+loadCached();
+</script>
+{% endblock %}

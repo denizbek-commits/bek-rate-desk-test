@@ -1,0 +1,621 @@
+{% extends 'base.html' %}
+{% block title %}NII Sensitivity — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display: grid; grid-template-columns: 340px 1fr; gap: 1rem; align-items: start; }
+.panel-left { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.items-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 280px; overflow-y: auto; }
+.item-row {
+  display: flex; align-items: center; gap: 0.4rem;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.4rem 0.6rem;
+  font-size: 0.7rem;
+}
+.item-row .item-name { flex: 1; color: var(--text); font-weight: 500; }
+.item-row .item-amt  { color: var(--accent); min-width: 70px; text-align: right; }
+.item-row .item-rate { color: var(--text-muted); min-width: 45px; text-align: right; }
+.item-row .item-type { color: var(--text-muted); min-width: 55px; text-align: right; font-size: 0.6rem; }
+.item-remove {
+  background: none; border: none; color: var(--text-muted);
+  cursor: pointer; font-size: 0.8rem; padding: 0 0.2rem;
+  transition: color 0.2s;
+}
+.item-remove:hover { color: var(--red); }
+
+.add-form { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; }
+.add-form .full { grid-column: span 2; }
+
+.scenario-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; }
+.sc-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 0.85rem 1rem;
+  cursor: pointer; transition: all 0.2s; position: relative;
+}
+.sc-card:hover { border-color: var(--accent); }
+.sc-card.active { border-color: var(--accent); background: var(--accent-glow); }
+.sc-name { font-size: 0.7rem; font-weight: 600; color: var(--text); margin-bottom: 0.2rem; font-family: var(--font-head); }
+.sc-desc { font-size: 0.6rem; color: var(--text-muted); }
+.sc-nii-change {
+  font-family: var(--font-mono); font-size: 1rem; font-weight: 500;
+  margin-top: 0.5rem; line-height: 1;
+}
+.sc-nii-change.pos { color: var(--green); }
+.sc-nii-change.neg { color: var(--red); }
+.sc-nii-change.neutral { color: var(--text-muted); }
+
+.results-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 1rem;
+}
+.kpi-strip { display: flex; gap: 0.75rem; margin-bottom: 1rem; }
+.kpi-strip .stat-box { flex: 1; }
+
+.gap-bar-row {
+  display: flex; align-items: center; gap: 0.75rem;
+  padding: 0.35rem 0; border-bottom: 1px solid var(--border-soft);
+  font-size: 0.72rem;
+}
+.gap-bar-label { width: 80px; color: var(--text-muted); flex-shrink: 0; }
+.gap-bar-track { flex: 1; height: 6px; background: var(--border); border-radius: 3px; position: relative; }
+.gap-bar-fill {
+  position: absolute; top: 0; height: 100%;
+  border-radius: 3px; transition: width 0.4s;
+}
+.gap-bar-fill.pos { background: var(--green); left: 50%; }
+.gap-bar-fill.neg { background: var(--red); right: 50%; }
+.gap-bar-val { width: 80px; text-align: right; font-variant-numeric: tabular-nums; }
+.gap-bar-val.pos { color: var(--green); }
+.gap-bar-val.neg { color: var(--red); }
+
+.chart-box { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 0.5rem; }
+
+.tr-toggle { display: flex; align-items: center; gap: 0.5rem; }
+.tr-badge { font-size: 0.6rem; padding: 2px 6px; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>NII Sensitivity</h1>
+      <p>Net Interest Income simulation — repricing gap analysis with rate shock scenarios</p>
+    </div>
+    <div class="tr-toggle">
+      <span class="badge badge-muted tr-badge">BRSA Context</span>
+      <label class="toggle">
+        <input type="checkbox" id="turkishToggle" checked onchange="toggleTurkish(this)"/>
+        <span class="toggle-slider"></span>
+      </label>
+      <span class="toggle-label" id="trLabel">Turkish Context ON</span>
+    </div>
+  </div>
+</div>
+
+<div class="layout">
+
+  <!-- ══ LEFT PANEL — INPUTS ══ -->
+  <div class="panel-left">
+
+    <!-- Assets -->
+    <div class="card">
+      <div class="card-title">Rate-Sensitive Assets</div>
+
+      <div class="items-list" id="assetsList"></div>
+
+      <hr class="sep"/>
+
+      <div class="add-form">
+        <div class="form-group full">
+          <label class="form-label">Asset Name</label>
+          <input class="form-input" id="aName" placeholder="e.g. Corporate Loans"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount (M)</label>
+          <input class="form-input" id="aAmount" type="number" placeholder="500"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rate (%)</label>
+          <input class="form-input" id="aRate" type="number" step="0.01" placeholder="8.50"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Repricing (months)</label>
+          <input class="form-input" id="aRepricing" type="number" placeholder="12"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="aType">
+            <option value="fixed">Fixed</option>
+            <option value="floating">Floating</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <button class="btn btn-ghost w-full" onclick="addItem('asset')">+ Add Asset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Liabilities -->
+    <div class="card">
+      <div class="card-title">Rate-Sensitive Liabilities</div>
+
+      <div class="items-list" id="liabsList"></div>
+
+      <hr class="sep"/>
+
+      <div class="add-form">
+        <div class="form-group full">
+          <label class="form-label">Liability Name</label>
+          <input class="form-input" id="lName" placeholder="e.g. Time Deposits"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Amount (M)</label>
+          <input class="form-input" id="lAmount" type="number" placeholder="400"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Rate (%)</label>
+          <input class="form-input" id="lRate" type="number" step="0.01" placeholder="6.00"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Repricing (months)</label>
+          <input class="form-input" id="lRepricing" type="number" placeholder="6"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Type</label>
+          <select class="form-select" id="lType">
+            <option value="fixed">Fixed</option>
+            <option value="floating">Floating</option>
+          </select>
+        </div>
+        <div class="form-group full">
+          <button class="btn btn-ghost w-full" onclick="addItem('liability')">+ Add Liability</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="card">
+      <div class="card-title">Parameters</div>
+      <div class="add-form">
+        <div class="form-group">
+          <label class="form-label" id="baseRateLabel">Base Rate (%)</label>
+          <input class="form-input" id="baseRate" type="number" step="0.25" value="45.0"/>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Horizon (months)</label>
+          <input class="form-input" id="horizon" type="number" value="12"/>
+        </div>
+      </div>
+      <div style="margin-top:0.5rem">
+        <button class="btn btn-primary w-full" onclick="runAnalysis()">
+          ▶ Run NII Analysis
+        </button>
+      </div>
+      <div style="margin-top:0.5rem">
+        <button class="btn btn-ghost w-full" onclick="loadSample()">
+          Load Sample Balance Sheet
+        </button>
+      </div>
+      <div style="margin-top:0.5rem;display:flex;gap:0.4rem">
+        <button class="btn btn-ghost" style="flex:1;font-size:0.7rem" onclick="exportNII()" title="Son hesaplama sonuçlarını Excel'e aktar">
+          📥 Export NII
+        </button>
+        <button class="btn btn-ghost" style="flex:1;font-size:0.7rem" onclick="exportRepricingGap()" title="Vade dilimi tablosunu Excel'e aktar">
+          📥 Repricing Gap
+        </button>
+      </div>
+      <div style="margin-top:0.4rem;display:flex;gap:0.4rem">
+        <button class="btn btn-ghost" style="flex:1;font-size:0.68rem;color:var(--gold)" onclick="loadFromSession()" title="Aktif oturumdan bilanço yükle">
+          📋 Oturumdan Yükle
+        </button>
+        <button class="btn btn-ghost" style="flex:1;font-size:0.68rem" onclick="saveToSession()" title="Mevcut bilanşoyu aktif oturuma kaydet">
+          💾 Oturuma Kaydet
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ══ RIGHT PANEL — RESULTS ══ -->
+  <div id="resultsPanel">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">📊</div>
+      <h2>NII Analysis</h2>
+      <p>Add assets and liabilities, then click Run NII Analysis to see repricing gap and scenario results.</p>
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+let assets      = [];
+let liabilities = [];
+let lastResult  = null;
+let isTurkish   = true;
+
+// ── Turkish context toggle ─────────────────────────────────────────────────
+function toggleTurkish(el) {
+  isTurkish = el.checked;
+  document.getElementById('trLabel').textContent =
+    isTurkish ? 'Turkish Context ON' : 'Generic (International)';
+  document.getElementById('baseRateLabel').textContent =
+    isTurkish ? 'TCMB Rate (%)' : 'Base Rate (%)';
+  document.getElementById('baseRate').value = isTurkish ? '45.0' : '5.25';
+}
+
+// ── Add item ───────────────────────────────────────────────────────────────
+function addItem(type) {
+  const prefix = type === 'asset' ? 'a' : 'l';
+  const name   = document.getElementById(prefix + 'Name').value.trim();
+  const amount = parseFloat(document.getElementById(prefix + 'Amount').value);
+  const rate   = parseFloat(document.getElementById(prefix + 'Rate').value);
+  const rp     = parseFloat(document.getElementById(prefix + 'Repricing').value || 9999);
+  const itype  = document.getElementById(prefix + 'Type').value;
+
+  if (!name || isNaN(amount) || isNaN(rate)) {
+    alert('Please fill in Name, Amount, and Rate.');
+    return;
+  }
+
+  const item = { name, amount, rate, repricing_months: rp, type: itype };
+  if (type === 'asset') {
+    assets.push(item);
+    renderList('assetsList', assets, 'asset');
+  } else {
+    liabilities.push(item);
+    renderList('liabsList', liabilities, 'liability');
+  }
+
+  // Clear inputs
+  ['Name','Amount','Rate','Repricing'].forEach(f =>
+    document.getElementById(prefix + f).value = '');
+}
+
+function removeItem(type, idx) {
+  if (type === 'asset') { assets.splice(idx, 1); renderList('assetsList', assets, 'asset'); }
+  else { liabilities.splice(idx, 1); renderList('liabsList', liabilities, 'liability'); }
+}
+
+function renderList(containerId, items, type) {
+  const el = document.getElementById(containerId);
+  if (!items.length) { el.innerHTML = '<div class="text-muted" style="font-size:0.7rem;padding:0.5rem">No items added yet</div>'; return; }
+  el.innerHTML = items.map((item, i) => `
+    <div class="item-row">
+      <span class="item-name">${item.name}</span>
+      <span class="item-amt">${item.amount.toLocaleString()}M</span>
+      <span class="item-rate">${item.rate}%</span>
+      <span class="item-type">${item.type === 'floating' ? 'Float' : item.repricing_months + 'mo'}</span>
+      <button class="item-remove" onclick="removeItem('${type}', ${i})">✕</button>
+    </div>
+  `).join('');
+}
+
+// ── Sample data ────────────────────────────────────────────────────────────
+function loadSample() {
+  assets = [
+    {name:'Floating Rate Loans', amount:2000, rate:47.5, repricing_months:1,  type:'floating'},
+    {name:'Fixed Corporate Loans',amount:1200, rate:44.0, repricing_months:12, type:'fixed'},
+    {name:'Gov Bond Portfolio',   amount:900,  rate:38.5, repricing_months:36, type:'fixed'},
+    {name:'TLREF-linked Loans',   amount:500,  rate:46.0, repricing_months:3,  type:'floating'},
+    {name:'Mortgages (Fixed)',     amount:300,  rate:35.0, repricing_months:60, type:'fixed'},
+  ];
+  liabilities = [
+    {name:'Demand Deposits',    amount:1500, rate:15.0, repricing_months:1,  type:'floating'},
+    {name:'Time Deposits (3M)', amount:1900, rate:42.0, repricing_months:3,  type:'fixed'},
+    {name:'Time Deposits (6M)', amount:600,  rate:40.0, repricing_months:6,  type:'fixed'},
+    {name:'Wholesale Funding',  amount:400,  rate:44.0, repricing_months:12, type:'fixed'},
+    {name:'Subordinated Debt',  amount:200,  rate:50.0, repricing_months:60, type:'fixed'},
+  ];
+  renderList('assetsList', assets, 'asset');
+  renderList('liabsList',  liabilities, 'liability');
+  document.getElementById('baseRate').value = '42.5';
+  document.getElementById('turkishToggle').checked = true;
+  isTurkish = true;
+  document.getElementById('trLabel').textContent = 'Turkish Context ON';
+}
+
+// ── Run analysis ───────────────────────────────────────────────────────────
+async function runAnalysis() {
+  if (!assets.length && !liabilities.length) {
+    alert('Add some assets and liabilities first, or use Load Sample.');
+    return;
+  }
+
+  document.getElementById('resultsPanel').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Computing NII sensitivity...</div>';
+
+  const payload = {
+    assets,
+    liabilities,
+    base_rate:       parseFloat(document.getElementById('baseRate').value),
+    horizon_months:  parseInt(document.getElementById('horizon').value),
+    turkish_context: isTurkish,
+    scenarios: [
+      'parallel_up_100', 'parallel_up_200',
+      'parallel_down_100', 'parallel_down_200',
+      'bear_steepen', 'bull_flatten',
+      'bear_flatten', 'bull_steepen'
+    ]
+  };
+
+  try {
+    const resp = await fetch('/api/nii/calculate', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify(payload)
+    });
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    lastResult = data;
+    renderResults(data);
+  } catch(err) {
+    document.getElementById('resultsPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><h2>Error</h2><p>${err.message}</p></div>`;
+  }
+}
+
+// ── Render results ─────────────────────────────────────────────────────────
+function renderResults(d) {
+  const scCards = Object.entries(d.scenarios).map(([key, sc]) => {
+    const label = {
+      parallel_up_100:   '+100bps Parallel',
+      parallel_up_200:   '+200bps Parallel',
+      parallel_down_100: '-100bps Parallel',
+      parallel_down_200: '-200bps Parallel',
+      bear_steepen:      'Bear Steepen',
+      bull_flatten:      'Bull Flatten',
+      bear_flatten:      'Bear Flatten',
+      bull_steepen:      'Bull Steepen',
+    }[key] || key;
+    const cls = sc.nii_change > 0 ? 'pos' : sc.nii_change < 0 ? 'neg' : 'neutral';
+    const sign = sc.nii_change > 0 ? '+' : '';
+    return `
+      <div class="sc-card" onclick="highlightScenario('${key}')">
+        <div class="sc-name">${label}</div>
+        <div class="sc-nii-change ${cls}">${sign}${fmt(sc.nii_change)}M</div>
+        <div class="sc-desc">${sign}${sc.nii_change_pct.toFixed(1)}% vs Base NII</div>
+      </div>`;
+  }).join('');
+
+  // Gap bars — scale to max absolute gap
+  const maxGap = Math.max(...d.repricing_gap.map(r => Math.abs(r.gap)), 1);
+  const gapBars = d.repricing_gap.map(r => {
+    const pct  = Math.abs(r.gap) / maxGap * 46;   // max 46% of half-track
+    const cls  = r.gap >= 0 ? 'pos' : 'neg';
+    const vcls = r.gap >= 0 ? 'pos' : 'neg';
+    return `
+      <div class="gap-bar-row">
+        <span class="gap-bar-label">${r.bucket}</span>
+        <span style="width:60px;text-align:right;font-size:0.65rem;color:var(--text-muted)">${fmt(r.rsa)}M</span>
+        <div class="gap-bar-track">
+          <div class="gap-bar-fill ${cls}" style="width:${pct}%"></div>
+        </div>
+        <span style="width:60px;font-size:0.65rem;color:var(--text-muted)">${fmt(r.rsl)}M</span>
+        <span class="gap-bar-val ${vcls}">${r.gap >= 0 ? '+' : ''}${fmt(r.gap)}M</span>
+        <span style="width:70px;text-align:right;font-size:0.65rem;color:var(--text-muted)">${fmt(r.cumulative_gap)}M cum.</span>
+      </div>`;
+  }).join('');
+
+  const totalA = d.total_assets;
+  const totalL = d.total_liabilities;
+  const equity = totalA - totalL;
+  const nii_at_risk_cls = d.nii_at_risk < 0 ? 'negative' : 'positive';
+
+  document.getElementById('resultsPanel').innerHTML = `
+    <!-- KPI Strip -->
+    <div class="kpi-strip">
+      <div class="stat-box">
+        <div class="stat-label">Base NII</div>
+        <div class="stat-value">${fmt(d.base_nii)}M</div>
+        <div class="stat-sub">${d.horizon_months}-month horizon</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">NII-at-Risk</div>
+        <div class="stat-value ${nii_at_risk_cls}">${fmt(d.nii_at_risk)}M</div>
+        <div class="stat-sub">Worst scenario impact</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total Assets</div>
+        <div class="stat-value">${fmt(totalA)}M</div>
+        <div class="stat-sub">Rate-sensitive</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Total Liabilities</div>
+        <div class="stat-value">${fmt(totalL)}M</div>
+        <div class="stat-sub">Rate-sensitive</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-label">Equity Buffer</div>
+        <div class="stat-value ${equity >= 0 ? 'positive' : 'negative'}">${fmt(equity)}M</div>
+        <div class="stat-sub">Assets − Liabilities</div>
+      </div>
+    </div>
+
+    <!-- Scenarios -->
+    <div class="card mb-2">
+      <div class="card-title">Rate Shock Scenarios</div>
+      <div class="scenario-grid">${scCards}</div>
+    </div>
+
+    <!-- Repricing Gap -->
+    <div class="card mb-2">
+      <div class="card-title">Repricing Gap by Tenor Bucket</div>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;font-size:0.65rem;color:var(--text-muted)">
+        <span style="width:80px"></span>
+        <span style="width:60px;text-align:right">RSA</span>
+        <span style="flex:1;text-align:center">Gap (RSA − RSL)</span>
+        <span style="width:60px">RSL</span>
+        <span style="width:80px;text-align:right">Gap / Cum.</span>
+      </div>
+      ${gapBars}
+    </div>
+
+    <!-- Charts -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">NII by Scenario</div>
+        <div class="chart-box" id="chartScenarios" style="height:220px"></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Cumulative Repricing Gap</div>
+        <div class="chart-box" id="chartGap" style="height:220px"></div>
+      </div>
+    </div>
+  `;
+
+  renderCharts(d);
+}
+
+function renderCharts(d) {
+  const scLabels = Object.keys(d.scenarios).map(k => k.replace(/_/g,' '));
+  const scNII    = Object.values(d.scenarios).map(v => v.nii);
+  const scColors = scNII.map(v => v >= d.base_nii ? '#10b981' : '#ef4444');
+
+  Plotly.newPlot('chartScenarios', [{
+    type: 'bar',
+    x: scLabels,
+    y: scNII,
+    marker: { color: scColors },
+    text: scNII.map(v => fmt(v) + 'M'),
+    textposition: 'outside',
+    textfont: { size: 9, color: '#94a3b8' },
+  }, {
+    type: 'scatter',
+    x: scLabels,
+    y: Array(scLabels.length).fill(d.base_nii),
+    mode: 'lines',
+    line: { color: '#2563eb', dash: 'dot', width: 1.5 },
+    name: 'Base NII'
+  }], {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    margin: { t: 10, b: 60, l: 50, r: 10 },
+    font: { family: 'DM Mono', size: 10, color: '#64748b' },
+    xaxis: { tickfont: { size: 8 }, gridcolor: '#1e2233', tickangle: -30 },
+    yaxis: { gridcolor: '#1e2233', ticksuffix: 'M' },
+    showlegend: false,
+  }, { displayModeBar: false, responsive: true });
+
+  const buckets = d.repricing_gap.map(r => r.bucket);
+  const gaps    = d.repricing_gap.map(r => r.gap);
+  const cumGaps = d.repricing_gap.map(r => r.cumulative_gap);
+
+  Plotly.newPlot('chartGap', [{
+    type: 'bar',
+    x: buckets,
+    y: gaps,
+    marker: { color: gaps.map(g => g >= 0 ? '#10b981' : '#ef4444') },
+    name: 'Gap per Bucket',
+  }, {
+    type: 'scatter',
+    x: buckets,
+    y: cumGaps,
+    mode: 'lines+markers',
+    line: { color: '#f59e0b', width: 2 },
+    marker: { size: 5, color: '#f59e0b' },
+    name: 'Cumulative',
+    yaxis: 'y2',
+  }], {
+    paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+    margin: { t: 10, b: 40, l: 50, r: 50 },
+    font: { family: 'DM Mono', size: 10, color: '#64748b' },
+    xaxis: { gridcolor: '#1e2233' },
+    yaxis:  { gridcolor: '#1e2233', ticksuffix: 'M', title: { text: 'Gap', font: { size: 9 } } },
+    yaxis2: { overlaying: 'y', side: 'right', ticksuffix: 'M', gridcolor: 'transparent',
+              title: { text: 'Cumulative', font: { size: 9 } } },
+    legend: { font: { size: 8 }, bgcolor: 'transparent' },
+    barmode: 'relative',
+  }, { displayModeBar: false, responsive: true });
+}
+
+function highlightScenario(key) {
+  document.querySelectorAll('.sc-card').forEach(c => c.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+}
+
+function fmt(v) {
+  if (v === null || v === undefined || isNaN(v)) return '—';
+  return (v >= 0 ? '+' : '') + parseFloat(v).toLocaleString(undefined, {minimumFractionDigits:1, maximumFractionDigits:1});
+}
+
+// Init
+renderList('assetsList', assets, 'asset');
+renderList('liabsList',  liabilities, 'liability');
+
+// ── Excel Export helpers ─────────────────────────────────────────────────────
+function _buildPayload() {
+  const isTurkish = document.getElementById('turkishToggle').checked;
+  return {
+    assets, liabilities,
+    base_rate:      parseFloat(document.getElementById('baseRate').value),
+    horizon_months: parseInt(document.getElementById('horizon').value),
+    turkish_context: isTurkish,
+    scenarios: ['parallel_up_100','parallel_up_200','parallel_down_100','parallel_down_200',
+                'bear_steepen','bull_flatten','bear_flatten','bull_steepen']
+  };
+}
+
+async function _downloadExport(url, defaultName) {
+  try {
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(_buildPayload())
+    });
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Export hatası'); }
+    const blob = await resp.blob();
+    const fname = (resp.headers.get('Content-Disposition') || '').match(/filename="?([^"]+)"?/)?.[1] || defaultName;
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+  } catch(e) {
+    alert('Export hatası: ' + e.message);
+  }
+}
+
+function exportNII()          { _downloadExport('/api/export/nii',             'nii_sensitivity.xlsx'); }
+function exportRepricingGap() { _downloadExport('/api/export/repricing-gap',   'repricing_gap.xlsx'); }
+
+// ── Balance sheet session ─────────────────────────────────────────────────────
+async function loadFromSession() {
+  try {
+    const r = await fetch('/api/session/balance-sheet');
+    const d = await r.json();
+    if (!d.has_session) { alert('Kayıtlı aktif oturum yok.\nÖnce Balance Sheet sayfasına gidin ve kaydedin.'); return; }
+    assets      = d.assets      || [];
+    liabilities = d.liabilities || [];
+    if (d.base_rate) document.getElementById('baseRate').value = d.base_rate;
+    renderList('assetsList', assets,      'asset');
+    renderList('liabsList',  liabilities, 'liability');
+    // Show toast
+    const t = document.createElement('div');
+    t.textContent = '📋 Oturum yüklendi ✓';
+    t.style.cssText = 'position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:var(--gold-dim);color:var(--gold);border:1px solid rgba(245,158,11,.3);border-radius:var(--radius);padding:.5rem 1rem;font-size:.75rem;font-family:var(--font-mono)';
+    document.body.appendChild(t);
+    setTimeout(()=>t.remove(), 2500);
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+
+async function saveToSession() {
+  const payload = {
+    name: 'NII Balance Sheet',
+    base_rate: parseFloat(document.getElementById('baseRate').value),
+    tier1_capital: 1500,
+    assets, liabilities
+  };
+  const r = await fetch('/api/session/balance-sheet', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload)
+  });
+  const d = await r.json();
+  const t = document.createElement('div');
+  t.textContent = d.ok ? '💾 Oturuma kaydedildi ✓' : '✗ Kayıt hatası';
+  t.style.cssText = `position:fixed;bottom:1.5rem;right:1.5rem;z-index:9999;background:${d.ok?'var(--green-dim)':'var(--red-dim)'};color:${d.ok?'var(--green)':'var(--red)'};border:1px solid ${d.ok?'rgba(16,185,129,.3)':'rgba(239,68,68,.3)'};border-radius:var(--radius);padding:.5rem 1rem;font-size:.75rem;font-family:var(--font-mono)`;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2500);
+}
+</script>
+{% endblock %}

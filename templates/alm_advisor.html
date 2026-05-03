@@ -1,0 +1,325 @@
+{% extends 'base.html' %}
+{% block title %}ALM Aksiyon Motoru — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.advisor-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:0.55rem; }
+.sc-card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:0.85rem 1rem; }
+.sc-card.breach  { border-left:3px solid var(--red); }
+.sc-card.warn    { border-left:3px solid var(--gold); }
+.sc-card.ok      { border-left:3px solid var(--green); }
+
+.sc-header { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:0.5rem; gap:0.5rem; }
+.sc-title  { font-family:var(--font-head); font-size:0.78rem; font-weight:700; color:var(--text); }
+.sc-sub    { font-size:0.6rem; color:var(--text-muted); margin-top:0.1rem; }
+
+.impact-row { display:flex; gap:0.5rem; margin:0.45rem 0; flex-wrap:wrap; }
+.impact-box { background:var(--surface); border:1px solid var(--border-soft); border-radius:4px;
+              padding:0.3rem 0.55rem; flex:1; min-width:90px; }
+.impact-label { font-size:0.51rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+.impact-val   { font-family:var(--font-head); font-size:0.82rem; font-weight:700; margin-top:0.1rem; }
+
+.summary-box { background:rgba(37,99,235,.07); border:1px solid rgba(37,99,235,.2);
+               border-radius:var(--radius); padding:0.45rem 0.65rem;
+               font-size:0.63rem; color:var(--text); line-height:1.5; margin:0.5rem 0; }
+
+.trade-list { margin-top:0.5rem; display:flex; flex-direction:column; gap:0.35rem; }
+.trade-item { background:var(--surface); border:1px solid var(--border-soft); border-radius:4px; padding:0.45rem 0.6rem; }
+.trade-head { display:flex; align-items:center; gap:0.4rem; margin-bottom:0.2rem; flex-wrap:wrap; }
+.trade-instr{ font-family:var(--font-head); font-size:0.68rem; font-weight:700; color:var(--accent); }
+.trade-dir  { font-size:0.6rem; color:var(--text-muted); }
+.trade-tenor{ font-family:var(--font-mono); font-size:0.6rem; background:var(--panel); border:1px solid var(--border); border-radius:3px; padding:1px 5px; color:var(--text-muted); }
+.trade-notional { font-family:var(--font-mono); font-size:0.65rem; font-weight:600; color:var(--gold); margin-left:auto; }
+.trade-rationale{ font-size:0.6rem; color:var(--text-muted); line-height:1.4; }
+
+.urgency-badge { font-size:0.5rem; font-weight:700; padding:2px 6px; border-radius:3px; }
+.urg-zorunlu { background:rgba(239,68,68,.2); color:var(--red); border:1px solid rgba(239,68,68,.3); }
+.urg-onerilir{ background:rgba(245,158,11,.2); color:var(--gold); border:1px solid rgba(245,158,11,.3); }
+.urg-ihtiyati{ background:rgba(37,99,235,.15); color:var(--accent); border:1px solid rgba(37,99,235,.25); }
+
+.meta-strip { display:flex; gap:0.4rem; flex-wrap:wrap; margin-bottom:0.75rem; }
+.meta-box { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+            padding:0.4rem 0.65rem; flex:1; min-width:110px; }
+.meta-label { font-size:0.5rem; text-transform:uppercase; letter-spacing:0.07em; color:var(--text-muted); }
+.meta-val   { font-family:var(--font-head); font-size:0.85rem; font-weight:700; margin-top:0.1rem; }
+
+.input-panel { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:0.85rem 1rem; margin-bottom:0.75rem; }
+.input-grid  { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:0.5rem; }
+
+.struct-card { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+               padding:0.75rem 1rem; margin-bottom:0.45rem; }
+.struct-card.zorunlu { border-left:3px solid var(--red); }
+.struct-card.onerilir{ border-left:3px solid var(--gold); }
+
+.risk-badge { display:inline-flex; align-items:center; gap:0.4rem; padding:0.3rem 0.75rem;
+              border-radius:var(--radius); font-family:var(--font-head); font-size:0.7rem; font-weight:700; }
+.risk-high   { background:rgba(239,68,68,.15); color:var(--red);    border:1px solid rgba(239,68,68,.3); }
+.risk-medium { background:rgba(245,158,11,.15); color:var(--gold);  border:1px solid rgba(245,158,11,.3); }
+.risk-low    { background:rgba(16,185,129,.15); color:var(--green); border:1px solid rgba(16,185,129,.3); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>ALM Aksiyon Motoru</h1>
+      <p>Bilanço metriklerine göre senaryo bazlı türev önerileri — IRS notional, FRA, yapısal önlemler · Türkçe gerekçe</p>
+    </div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-ghost" onclick="loadFromEVE()">📥 EVE Verisi Yükle</button>
+      <button class="btn btn-primary" onclick="runAdvisor()">▶ Analiz Et</button>
+    </div>
+  </div>
+</div>
+
+<!-- INPUT PANEL -->
+<div class="input-panel">
+  <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.6rem">
+    Bilanço Giriş Parametreleri
+    <span style="margin-left:0.5rem;color:var(--accent);text-transform:none;font-style:italic">EVE / NII sayfasından otomatik yüklemek için "EVE Verisi Yükle" butonunu kullanın</span>
+  </div>
+  <div class="input-grid">
+    <div class="form-group">
+      <label class="form-label">Net DV01 (M TL/bps)</label>
+      <input class="form-input" id="inpDv01" type="number" step="0.01" value="-5.20" placeholder="örn. -5.20"/>
+      <div style="font-size:0.52rem;color:var(--text-muted);margin-top:2px">Negatif = varlık duyarlı (EVE engine uyumlu)</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Duration Gap (yıl)</label>
+      <input class="form-input" id="inpDurGap" type="number" step="0.01" value="1.8"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Repricing Gap 1Y (M TL)</label>
+      <input class="form-input" id="inpRpGap" type="number" step="10" value="-2500"/>
+      <div style="font-size:0.52rem;color:var(--text-muted);margin-top:2px">RSA − RSL (1 yıllık)</div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Base EVE (M TL)</label>
+      <input class="form-input" id="inpEve" type="number" step="100" value="8500"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Tier 1 Sermaye (M TL)</label>
+      <input class="form-input" id="inpTier1" type="number" step="100" value="12000"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Toplam Varlıklar (M TL)</label>
+      <input class="form-input" id="inpAssets" type="number" step="1000" value="95000"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">LCR (%)</label>
+      <input class="form-input" id="inpLcr" type="number" step="0.1" value="128.5"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">NSFR (%)</label>
+      <input class="form-input" id="inpNsfr" type="number" step="0.1" value="113.2"/>
+    </div>
+    <div class="form-group">
+      <label class="form-label">TRY IRS Proxy (%)</label>
+      <input class="form-input" id="inpSwap" type="number" step="0.1" value="42.5"/>
+      <div style="font-size:0.52rem;color:var(--text-muted);margin-top:2px">TCMB politika faizi ≈ swap proxy</div>
+    </div>
+  </div>
+</div>
+
+<div id="advisorContent">
+  <div class="coming-soon" style="min-height:200px">
+    <div class="coming-soon-icon">🏦</div>
+    <p>Parametreleri girin ve <strong>Analiz Et</strong>'e basın.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── EVE sayfasından veri yükleme ────────────────────────────────────────────
+async function loadFromEVE() {
+  try {
+    // Mevcut EVE analiz endpoint'inden son hesaplamayı çek
+    const resp = await fetch('/api/eve/last-result');
+    if (!resp.ok) { showToast('EVE verisi bulunamadı — manuel girin'); return; }
+    const d = await resp.json();
+    if (d.net_dv01      != null) document.getElementById('inpDv01').value     = d.net_dv01;
+    if (d.duration_gap  != null) document.getElementById('inpDurGap').value   = d.duration_gap;
+    if (d.base_eve      != null) document.getElementById('inpEve').value       = d.base_eve;
+    if (d.tier1_capital != null) document.getElementById('inpTier1').value     = d.tier1_capital;
+    showToast('EVE verisi yüklendi ✓');
+  } catch(e) { showToast('EVE verisi yüklenemedi — manuel girin'); }
+}
+
+// ── Ana analiz ────────────────────────────────────────────────────────────────
+async function runAdvisor() {
+  document.getElementById('advisorContent').innerHTML =
+    '<div class="loading" style="padding:3rem"><div class="spinner"></div> Senaryo analizi hesaplanıyor...</div>';
+
+  const payload = {
+    net_dv01:         parseFloat(document.getElementById('inpDv01').value)   || 0,
+    duration_gap:     parseFloat(document.getElementById('inpDurGap').value) || 0,
+    repricing_gap_1y: parseFloat(document.getElementById('inpRpGap').value)  || 0,
+    base_eve:         parseFloat(document.getElementById('inpEve').value)    || 0,
+    tier1_capital:    parseFloat(document.getElementById('inpTier1').value)  || 1500,
+    total_assets:     parseFloat(document.getElementById('inpAssets').value) || 50000,
+    lcr:              parseFloat(document.getElementById('inpLcr').value)    || 120,
+    nsfr:             parseFloat(document.getElementById('inpNsfr').value)   || 115,
+    swap_rate:        parseFloat(document.getElementById('inpSwap').value)   || 42.5,
+  };
+
+  try {
+    const resp = await fetch('/api/alm/recommend', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload),
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderAdvisor(d);
+  } catch(err) {
+    document.getElementById('advisorContent').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function urgencyCls(u) {
+  if (!u) return 'urg-ihtiyati';
+  const v = u.toUpperCase();
+  if (v.includes('ZORUNLU')) return 'urg-zorunlu';
+  if (v.includes('ÖNERİLİR')) return 'urg-onerilir';
+  return 'urg-ihtiyati';
+}
+function cardCls(sc) {
+  if (sc.brsa_breach) return 'breach';
+  if (Math.abs(sc.eve_pct_tier1||0) >= 8) return 'warn';
+  return 'ok';
+}
+function riskCls(r) {
+  if (!r) return 'risk-low';
+  if (r.includes('YÜKSEK')) return 'risk-high';
+  if (r.includes('ORTA'))   return 'risk-medium';
+  return 'risk-low';
+}
+function fmtM(v) {
+  if (v == null) return '—';
+  return (v >= 0 ? '+' : '') + v.toLocaleString('tr-TR', {maximumFractionDigits:1}) + ' M₺';
+}
+function fmtPct(v) {
+  if (v == null) return '—';
+  return (v >= 0 ? '+' : '') + v.toFixed(1) + '%';
+}
+
+function renderTradeList(trades) {
+  if (!trades?.length) return '<div style="font-size:0.63rem;color:var(--text-muted);margin-top:0.4rem">Aksiyon önerisi yok.</div>';
+  return `<div class="trade-list">${trades.map(t => `
+    <div class="trade-item">
+      <div class="trade-head">
+        <span class="trade-instr">${t.instrument}</span>
+        <span class="trade-tenor">${t.tenor}</span>
+        <span class="trade-dir">${t.direction}</span>
+        <span class="urgency-badge ${urgencyCls(t.urgency)}">${t.urgency}</span>
+        <span class="trade-notional">${t.notional_m!=null?(t.notional_m.toLocaleString('tr-TR',{maximumFractionDigits:0})+' M₺'):'—'}</span>
+      </div>
+      <div class="trade-rationale">${t.rationale_tr}</div>
+    </div>`).join('')}</div>`;
+}
+
+function renderAdvisor(d) {
+  const meta   = d.meta   || {};
+  const scens  = d.scenarios  || {};
+  const struct = d.structural || [];
+
+  const SCEN_ORDER = ['parallel_up_200','bear_steepen','bear_flatten','parallel_down_200','bull_flatten','bull_steepen'];
+
+  // ── Meta strip ─────────────────────────────────────────────────────────
+  const metaHtml = `
+    <div class="flex-between mb-1">
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted)">Bilanço Özeti</div>
+      <div class="risk-badge ${riskCls(meta.overall_risk)}">${meta.overall_risk||''}</div>
+    </div>
+    <div class="meta-strip mb-2">
+      <div class="meta-box"><div class="meta-label">Net DV01</div><div class="meta-val" style="color:${meta.net_dv01>0?'var(--red)':'var(--green)'}">${meta.net_dv01!=null?(meta.net_dv01>=0?'+':'')+meta.net_dv01.toFixed(2)+' M₺/bps':'—'}</div><div style="font-size:0.52rem;color:var(--text-muted)">${meta.orientation||''}</div></div>
+      <div class="meta-box"><div class="meta-label">Duration Gap</div><div class="meta-val" style="color:${meta.duration_gap>0?'var(--gold)':'var(--accent)'}">${meta.duration_gap!=null?(meta.duration_gap>=0?'+':'')+meta.duration_gap.toFixed(2)+' yıl':'—'}</div></div>
+      <div class="meta-box"><div class="meta-label">Repricing Gap 1Y</div><div class="meta-val" style="color:${(meta.repricing_gap_1y||0)<0?'var(--red)':'var(--green)'}">${fmtM(meta.repricing_gap_1y)}</div></div>
+      <div class="meta-box"><div class="meta-label">Base EVE</div><div class="meta-val">${fmtM(meta.base_eve)}</div></div>
+      <div class="meta-box"><div class="meta-label">Tier 1</div><div class="meta-val" style="color:var(--accent)">${fmtM(meta.tier1_capital)}</div></div>
+      <div class="meta-box"><div class="meta-label">LCR</div><div class="meta-val" style="color:${meta.lcr<100?'var(--red)':meta.lcr<115?'var(--gold)':'var(--green)'}">${meta.lcr!=null?meta.lcr.toFixed(1)+'%':'—'}</div></div>
+      <div class="meta-box"><div class="meta-label">NSFR</div><div class="meta-val" style="color:${meta.nsfr<100?'var(--red)':meta.nsfr<110?'var(--gold)':'var(--green)'}">${meta.nsfr!=null?meta.nsfr.toFixed(1)+'%':'—'}</div></div>
+    </div>`;
+
+  // ── Senaryo kartları ───────────────────────────────────────────────────
+  const scHtml = SCEN_ORDER.filter(k => scens[k]).map(k => {
+    const sc = scens[k];
+    const cls = cardCls(sc);
+    const eveColor = (sc.eve_impact_m||0) < 0 ? 'var(--red)' : 'var(--green)';
+    const niiColor = (sc.nii_impact_m||0) < 0 ? 'var(--red)' : 'var(--green)';
+    return `
+      <div class="sc-card ${cls}">
+        <div class="sc-header">
+          <div>
+            <div class="sc-title">${sc.label_tr||sc.label}</div>
+            <div class="sc-sub">${sc.label}</div>
+          </div>
+          ${sc.brsa_breach?`<span class="urgency-badge urg-zorunlu">⚠ BRSA İHLALİ</span>`:''}
+        </div>
+
+        <div class="impact-row">
+          <div class="impact-box">
+            <div class="impact-label">EVE Etkisi</div>
+            <div class="impact-val" style="color:${eveColor}">${fmtM(sc.eve_impact_m)}</div>
+          </div>
+          <div class="impact-box">
+            <div class="impact-label">Tier1 Oranı</div>
+            <div class="impact-val" style="color:${Math.abs(sc.eve_pct_tier1||0)>=15?'var(--red)':Math.abs(sc.eve_pct_tier1||0)>=8?'var(--gold)':'var(--text)'}">${fmtPct(sc.eve_pct_tier1)}</div>
+          </div>
+          <div class="impact-box">
+            <div class="impact-label">NII Etkisi</div>
+            <div class="impact-val" style="color:${niiColor}">${fmtM(sc.nii_impact_m)}</div>
+          </div>
+        </div>
+
+        <div class="summary-box">📌 ${sc.summary_tr}</div>
+
+        <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--text-muted);margin-top:0.5rem;margin-bottom:0.2rem">Önerilen İşlemler</div>
+        ${renderTradeList(sc.trades)}
+      </div>`;
+  }).join('');
+
+  // ── Yapısal öneriler ───────────────────────────────────────────────────
+  const structHtml = struct.length ? `
+    <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin:1rem 0 0.4rem">
+      Yapısal Önlemler — LCR / NSFR
+    </div>
+    ${struct.map(s => `
+      <div class="struct-card ${s.urgency?.toLowerCase()==='zorunlu'?'zorunlu':'onerilir'}">
+        <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;flex-wrap:wrap">
+          <span class="urgency-badge ${urgencyCls(s.urgency)}">${s.urgency}</span>
+          <span style="font-family:var(--font-head);font-size:0.7rem;font-weight:700;color:var(--text)">${s.action}</span>
+          <span style="font-family:var(--font-mono);font-size:0.65rem;color:var(--gold);margin-left:auto">${s.notional_m!=null?s.notional_m.toLocaleString('tr-TR',{maximumFractionDigits:0})+' M₺':''}</span>
+          <span style="font-family:var(--font-mono);font-size:0.62rem;color:${s.value<s.limit?'var(--red)':'var(--gold)'};">${s.metric}: ${s.value}% / Limit: ${s.limit}%</span>
+        </div>
+        <div style="font-size:0.63rem;color:var(--text-muted);line-height:1.5">${s.summary_tr}</div>
+      </div>`).join('')}` : '';
+
+  // ── Notlar ─────────────────────────────────────────────────────────────
+  const notesHtml = `
+    <div style="font-size:0.58rem;color:var(--text-muted);margin-top:0.75rem;padding:0.5rem 0.75rem;background:var(--panel);border:1px solid var(--border-soft);border-radius:var(--radius);line-height:1.6">
+      <strong style="color:var(--text)">Metodoloji notu:</strong>
+      IRS DV01 hesaplaması Macaulay duration yaklaşımı ile yapılmaktadır (par bond, yıllık kupon).
+      Nominal büyüklükler kesin işlem teklifi değil, riskten korunma ihtiyacının yaklaşık ölçüsüdür.
+      BRSA IRRBB sınırı: ΔEVE ≤ ±%15 Tier 1 sermaye.
+      Tüm öneriler piyasa koşullarına ve karşı taraf limitlerine tabi olarak değerlendirilmelidir.
+    </div>`;
+
+  document.getElementById('advisorContent').innerHTML =
+    metaHtml +
+    `<div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:0.5rem">Senaryo Bazlı Aksiyon Önerileri</div>` +
+    `<div class="advisor-grid">${scHtml}</div>` +
+    structHtml + notesHtml;
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.textContent = msg;
+  t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3000);
+}
+</script>
+{% endblock %}

@@ -1,0 +1,217 @@
+{% extends 'base.html' %}
+{% block title %}ALCO Memo — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.layout { display:grid; grid-template-columns:280px 1fr; gap:1rem; align-items:start; }
+.memo-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:1.25rem 1.5rem; font-family:var(--font-mono); font-size:0.7rem; line-height:1.75; color:var(--text-dim); white-space:pre-wrap; min-height:400px; }
+.tabs { display:flex; gap:0; border-bottom:1px solid var(--border); margin-bottom:0.75rem; }
+.tab-btn { padding:0.38rem 1.1rem; font-size:0.7rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:2px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; }
+.tab-btn.active { color:var(--text); border-bottom-color:var(--accent); }
+.metric-input-box { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.45rem 0.6rem; }
+.metric-input-label { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em; color:var(--text-muted); margin-bottom:0.15rem; }
+.metric-grid { display:grid; grid-template-columns:repeat(2,1fr); gap:0.4rem; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>ALCO Memo Generator</h1>
+  <p>Tek tuşla yönetim özeti — Türkçe ve İngilizce, kopyalanabilir, indirilebilir</p>
+</div>
+
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Memo Bilgileri</div>
+      <div class="form-group"><label class="form-label">Banka Adı</label><input class="form-input" id="mBank" placeholder="Anadolubank A.Ş." value="Anadolubank A.Ş."/></div>
+      <div class="form-group"><label class="form-label">Dönem</label><input class="form-input" id="mPeriod" placeholder="Nisan 2026" value="Nisan 2026"/></div>
+      <div class="form-group"><label class="form-label">Hazırlayan</label><input class="form-input" id="mPreparer" placeholder="Hazine / ALM Masası" value="Hazine / ALM Masası"/></div>
+      <div class="form-group"><label class="form-label">Toplam Aktif (M)</label><input class="form-input" id="mAssets" type="number" placeholder="4900"/></div>
+      <div class="form-group"><label class="form-label">TCMB Policy Rate (%)</label><input class="form-input" id="mBaseRate" type="number" step="0.25" value="42.5"/></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Risk Metrikleri</div>
+      <div class="metric-grid">
+        <div class="metric-input-box"><div class="metric-input-label">NII Base (M)</div><input class="form-input" id="m-nii-base" type="number" placeholder="620"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">NII Worst Δ (M)</div><input class="form-input" id="m-nii-delta" type="number" placeholder="-14"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">Worst Scenario</div><input class="form-input" id="m-scenario" placeholder="+200bps"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">ΔEVE Worst (M)</div><input class="form-input" id="m-eve" type="number" placeholder="-185"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">Tier 1 (M)</div><input class="form-input" id="m-tier1" type="number" placeholder="1500"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">Duration Gap (Y)</div><input class="form-input" id="m-dur" type="number" step="0.01" placeholder="-0.7"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">LCR (%)</div><input class="form-input" id="m-lcr" type="number" placeholder="118"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">NSFR (%)</div><input class="form-input" id="m-nsfr" type="number" placeholder="112"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">FX NOP (M TL)</div><input class="form-input" id="m-fx" type="number" placeholder="350"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">Capital (M TL)</div><input class="form-input" id="m-cap" type="number" placeholder="1800"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">USD/TRY</div><input class="form-input" id="m-usdtry" type="number" placeholder="38.10"/></div>
+        <div class="metric-input-box"><div class="metric-input-label">US 10Y (%)</div><input class="form-input" id="m-us10y" type="number" placeholder="4.35"/></div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary w-full" onclick="generateMemo()">▶ Memo Üret</button>
+    <div style="display:flex;gap:0.4rem;margin-top:0.4rem">
+      <button class="btn btn-ghost" style="flex:1;font-size:0.68rem;color:var(--gold)" onclick="prefillAlco()" title="Son hesaplamalardan otomatik doldur">🔄 Hesaplamalardan</button>
+      <button class="btn btn-ghost" style="flex:1;font-size:0.68rem" onclick="loadSample()">Örnek</button>
+    </div>
+  </div>
+
+  <div id="memoPanel">
+    <div class="coming-soon">
+      <div class="coming-soon-icon">📄</div><h2>ALCO Memo Generator</h2>
+      <p>Risk metriklerini doldurun ve Memo Üret butonuna tıklayın. Türkçe ve İngilizce çıktı üretilecek.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let memoData = null;
+
+function loadSample() {
+  const vals = {
+    'mBank':'Anadolubank A.Ş.','mPeriod':'Nisan 2026','mPreparer':'Hazine / ALM Masası',
+    'mAssets':'4900','mBaseRate':'42.5',
+    'm-nii-base':'620','m-nii-delta':'-14','m-scenario':'+200bps Parallel',
+    'm-eve':'-185','m-tier1':'1500','m-dur':'-0.7',
+    'm-lcr':'118','m-nsfr':'112','m-fx':'350','m-cap':'1800',
+    'm-usdtry':'38.10','m-us10y':'4.35',
+  };
+  Object.entries(vals).forEach(([id,v])=>{ document.getElementById(id).value=v; });
+}
+
+function g(id){ const v=parseFloat(document.getElementById(id).value); return isNaN(v)?null:v; }
+function gs(id){ return document.getElementById(id).value.trim()||null; }
+
+async function generateMemo() {
+  document.getElementById('memoPanel').innerHTML =
+    '<div class="loading" style="padding:2rem"><div class="spinner"></div> ALCO memo hazırlanıyor...</div>';
+
+  // Önce morning brief hesapla
+  const briefPayload = {
+    nii_base:          g('m-nii-base'),
+    nii_worst_delta:   g('m-nii-delta'),
+    nii_worst_scenario:gs('m-scenario') || '+200bps',
+    eve_delta_worst:   g('m-eve'),
+    tier1_capital:     g('m-tier1') || 1500,
+    duration_gap:      g('m-dur') || 0,
+    lcr:               g('m-lcr'),
+    nsfr:              g('m-nsfr'),
+    fx_nop_tl:         g('m-fx') || 0,
+    capital_tl:        g('m-cap') || 1800,
+    repricing_gap:     0,
+    worst_bucket:      'N/A',
+    total_assets:      g('mAssets') || 0,
+    base_rate:         g('mBaseRate') || 42.5,
+    usdtry:            g('m-usdtry'),
+    us_10y:            g('m-us10y'),
+  };
+
+  try {
+    // Step 1: brief
+    const bResp = await fetch('/api/morning-brief', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify(briefPayload)
+    });
+    const brief = await bResp.json();
+    if (brief.error) throw new Error(brief.error);
+
+    // Step 2: memo
+    const mResp = await fetch('/api/alco-memo/generate', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        brief,
+        bank_name:    gs('mBank')     || 'Bank',
+        period:       gs('mPeriod')   || 'N/A',
+        preparer:     gs('mPreparer') || 'Treasury',
+        total_assets: g('mAssets')   || 0,
+        base_rate:    g('mBaseRate') || 42.5,
+      })
+    });
+    const d = await mResp.json();
+    if (d.error) throw new Error(d.error);
+    memoData = d;
+    renderMemo(d, brief);
+  } catch(err) {
+    document.getElementById('memoPanel').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderMemo(d, brief) {
+  const rColor = brief.risk_color;
+  document.getElementById('memoPanel').innerHTML = `
+    <div class="flex-between mb-2">
+      <div style="display:flex;align-items:center;gap:0.75rem">
+        <div style="width:12px;height:12px;border-radius:50%;background:${rColor}"></div>
+        <span style="font-size:0.75rem;font-weight:600;color:${rColor}">${brief.risk_level}</span>
+        <span style="font-size:0.65rem;color:var(--text-muted)">${d.period} · ${d.generated_at}</span>
+      </div>
+      <div style="display:flex;gap:0.4rem">
+        <button class="btn btn-ghost" style="font-size:0.68rem" onclick="copyMemo()">📋 Kopyala</button>
+        <button class="btn btn-ghost" style="font-size:0.68rem" onclick="downloadMemo()">⬇ .txt İndir</button>
+      </div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tab-tr" onclick="switchTab('tr')">🇹🇷 Türkçe</button>
+      <button class="tab-btn"        id="tab-en" onclick="switchTab('en')">🇺🇸 English</button>
+    </div>
+
+    <div id="memoTR" class="memo-box">${escapeHtml(d.tr_memo)}</div>
+    <div id="memoEN" class="memo-box" style="display:none">${escapeHtml(d.en_memo)}</div>`;
+}
+
+function switchTab(lang) {
+  document.getElementById('tab-tr').classList.toggle('active', lang==='tr');
+  document.getElementById('tab-en').classList.toggle('active', lang==='en');
+  document.getElementById('memoTR').style.display = lang==='tr' ? '' : 'none';
+  document.getElementById('memoEN').style.display = lang==='en' ? '' : 'none';
+}
+
+function copyMemo() {
+  if (!memoData) return;
+  const text = document.getElementById('memoTR').style.display !== 'none'
+    ? memoData.tr_memo : memoData.en_memo;
+  navigator.clipboard.writeText(text).then(() => showToast('Kopyalandı ✓'));
+}
+
+function downloadMemo() {
+  if (!memoData) return;
+  const both = memoData.tr_memo + '\n\n' + '='.repeat(60) + '\n\n' + memoData.en_memo;
+  const blob = new Blob([both], {type:'text/plain;charset=utf-8'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `ALCO_Memo_${memoData.period?.replace(/\s/g,'_')}_${memoData.generated_at?.slice(0,10)}.txt`;
+  a.click();
+}
+
+function escapeHtml(t) {
+  return (t||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(()=>t.remove(), 2000);
+}
+
+async function prefillAlco() {
+  try {
+    const r = await fetch('/api/prefill/alco');
+    const d = await r.json();
+    if (d.error) throw new Error(d.error);
+    const fields = d.fields || {};
+    let filled = 0;
+    Object.entries(fields).forEach(([id, val]) => {
+      const el = document.getElementById(id);
+      if (el && val !== null && val !== undefined) { el.value = val; filled++; }
+    });
+    showToast(filled > 0
+      ? `✓ ${filled} alan dolduruldu — ${(d.sourced||[]).join(', ')}`
+      : '⚠ Henüz hesaplama yok');
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+</script>
+{% endblock %}

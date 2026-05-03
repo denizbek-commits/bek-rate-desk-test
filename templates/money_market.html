@@ -1,0 +1,712 @@
+{% extends 'base.html' %}
+{% block title %}Money Market — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.desk-tabs { display:flex; gap:0; border-bottom:2px solid var(--border); margin-bottom:1.25rem; }
+.desk-tab  { padding:0.5rem 1.35rem; font-size:0.72rem; font-family:var(--font-mono); color:var(--text-muted); border-bottom:3px solid transparent; cursor:pointer; background:none; border-top:none; border-left:none; border-right:none; transition:all 0.15s; margin-bottom:-2px; white-space:nowrap; }
+.desk-tab.active { color:var(--text); border-bottom-color:var(--accent); }
+
+.status-banner { border-radius:var(--radius); padding:0.75rem 1.1rem; border-left:4px solid; margin-bottom:1rem; display:flex; align-items:center; justify-content:space-between; }
+.status-open   { background:rgba(239,68,68,.08);  border-color:var(--red); }
+.status-excess { background:rgba(16,185,129,.08); border-color:var(--green); }
+.status-bal    { background:rgba(37,99,235,.08);  border-color:var(--accent); }
+
+.strategy-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.7rem 0.9rem; margin-bottom:0.5rem; display:grid; grid-template-columns:30px 1fr 90px 90px; gap:0.5rem; align-items:center; }
+.priority-badge { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.65rem; font-weight:700; }
+.p1 { background:var(--red-dim);   color:var(--red); }
+.p2 { background:var(--gold-dim);  color:var(--gold); }
+.p3 { background:var(--green-dim); color:var(--green); }
+
+.source-name { font-size:0.75rem; font-weight:600; color:var(--text); }
+.source-note { font-size:0.62rem; color:var(--text-muted); }
+.source-rate { font-family:var(--font-head); font-size:0.9rem; font-weight:700; text-align:right; }
+.source-amount{ font-family:var(--font-mono); font-size:0.75rem; text-align:right; color:var(--text-muted); }
+
+.repo-form { display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; }
+.repo-form .full { grid-column:span 2; }
+
+.ib-table { width:100%; border-collapse:collapse; font-size:0.71rem; }
+.ib-table th { text-align:left; padding:0.35rem 0.6rem; color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.07em; border-bottom:1px solid var(--border); font-weight:400; }
+.ib-table td { padding:0.42rem 0.6rem; border-bottom:1px solid var(--border-soft); }
+.ib-table .r { text-align:right; font-variant-numeric:tabular-nums; }
+.usage-bar { height:6px; border-radius:3px; background:var(--border-soft); overflow:hidden; }
+.usage-fill { height:100%; border-radius:3px; transition:width 0.3s; }
+.u-ok   { background:var(--green); }
+.u-warn { background:var(--gold); }
+.u-full { background:var(--red); }
+
+.auction-scenario { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.5rem 0.7rem; margin-bottom:0.35rem; display:grid; grid-template-columns:60px 1fr 1fr 1fr 1fr; gap:0.4rem; align-items:center; font-size:0.68rem; }
+.auction-scenario.best { border-color:var(--accent); background:var(--accent-glow); }
+
+.mix-bar { display:flex; height:20px; border-radius:var(--radius); overflow:hidden; margin:0.5rem 0; }
+.mix-tcmb { background:var(--accent); display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#fff; font-weight:600; }
+.mix-ib   { background:var(--gold);   display:flex; align-items:center; justify-content:center; font-size:0.6rem; color:#000; font-weight:600; }
+
+.session-pill { display:inline-flex; align-items:center; gap:0.3rem; padding:2px 8px; border-radius:3px; font-size:0.62rem; font-weight:600; }
+.sess-open    { background:var(--green-dim); color:var(--green); }
+.sess-closed  { background:var(--panel);     color:var(--text-muted); }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Money Market Desk</h1>
+      <p>Günlük likidite yönetimi · Repo fiyatlama · TCMB penceresi · Interbank limitleri · Fonlama raporu</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span id="mmLiveLabel" style="font-size:0.6rem;color:var(--text-muted)"></span>
+      <button class="btn btn-ghost" onclick="loadLiveRates()">📡 Canlı Veri</button>
+      <button class="btn btn-ghost" onclick="loadSample()">↺ Örnek Veri</button>
+      <div id="sessionBadges" style="display:flex;gap:0.3rem;align-items:center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- SEANS DURUMU -->
+<div id="sessionBar" style="display:flex;gap:0.5rem;margin-bottom:1rem;flex-wrap:wrap"></div>
+
+<!-- TABS -->
+<div class="desk-tabs">
+  <button class="desk-tab active" id="tab-liq"    onclick="switchTab('liq')">💧 Likidite Pozisyonu</button>
+  <button class="desk-tab"        id="tab-repo"   onclick="switchTab('repo')">🏛 Repo Fiyatlama</button>
+  <button class="desk-tab"        id="tab-tcmb"   onclick="switchTab('tcmb')">🏦 TCMB İhalesi</button>
+  <button class="desk-tab"        id="tab-ib"     onclick="switchTab('ib')">🔗 Interbank Limitler</button>
+  <button class="desk-tab"        id="tab-report" onclick="switchTab('report')">📊 Maliyet Raporu</button>
+</div>
+
+<!-- ══ LİKİDİTE TAB ══ -->
+<div id="panel-liq">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Günlük Pozisyon Girdileri</div>
+      <div class="form-group"><label class="form-label">Gün Başı Bakiye (M) — negatif = açık</label>
+        <input class="form-input" id="liqOpening" type="number" placeholder="-850"/></div>
+      <div class="form-group"><label class="form-label">Beklenen Girişler (M)</label>
+        <input class="form-input" id="liqInflows" type="number" placeholder="200"/></div>
+      <div class="form-group"><label class="form-label">Beklenen Çıkışlar (M)</label>
+        <input class="form-input" id="liqOutflows" type="number" placeholder="150"/></div>
+      <hr class="sep"/>
+      <div class="form-group"><label class="form-label">TCMB Teminat Havuzu (M)</label>
+        <input class="form-input" id="liqColl" type="number" placeholder="1200"/></div>
+      <div class="form-group"><label class="form-label">TCMB Politika Faizi (%)</label>
+        <input class="form-input" id="liqPolicy" type="number" step="0.25" placeholder="42.5"/></div>
+      <div class="form-group"><label class="form-label">TLREF (%)</label>
+        <input class="form-input" id="liqTLREF" type="number" step="0.1" placeholder="43.2"/></div>
+      <div class="form-group"><label class="form-label">Interbank O/N Faizi (%)</label>
+        <input class="form-input" id="liqIBRate" type="number" step="0.1" placeholder="43.5"/></div>
+      <div class="form-group"><label class="form-label">Interbank Kullanılabilir Limit (M)</label>
+        <input class="form-input" id="liqIBAvail" type="number" placeholder="800"/></div>
+      <div class="form-group"><label class="form-label">Asgari Rezerv Tamponu (M)</label>
+        <input class="form-input" id="liqBuffer" type="number" placeholder="100"/></div>
+      <button class="btn btn-primary w-full" onclick="calcLiquidity()">▶ Pozisyon Hesapla</button>
+      <button class="btn btn-ghost  w-full mt-1" onclick="loadSample()">Sample</button>
+    </div>
+    <div id="liqResult">
+      <div class="coming-soon" style="min-height:300px">
+        <div class="coming-soon-icon">💧</div>
+        <h2>Likidite Pozisyonu</h2>
+        <p>Sabah bakiyen, beklenen nakit akışlarını gir.<br>Sistem optimal fonlama stratejisini üretir.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ REPO TAB ══ -->
+<div id="panel-repo" style="display:none">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">Repo Fiyatlama</div>
+      <div class="repo-form">
+        <div class="form-group full"><label class="form-label">İşlem Tipi</label>
+          <select class="form-select" id="repoType">
+            <option value="tcmb">TCMB Repo</option>
+            <option value="interbank">Interbank Repo</option>
+            <option value="bist">BIST Repo Pazarı</option>
+          </select>
+        </div>
+        <div class="form-group full"><label class="form-label">Yön</label>
+          <select class="form-select" id="repoDir">
+            <option value="borrow">Borç Al (Repo — teminat ver, TL al)</option>
+            <option value="lend">Borç Ver (Ters Repo — TL ver, teminat al)</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Teminat Tipi</label>
+          <select class="form-select" id="repoColl">
+            <option value="govbond">Devlet Tahvili</option>
+            <option value="tbill">Hazine Bonosu</option>
+            <option value="eurobond">Eurobond</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Teminat Vadesi (Yıl)</label>
+          <input class="form-input" id="repoMaturity" type="number" step="0.5" placeholder="3"/></div>
+        <div class="form-group"><label class="form-label">Nominal Değer (M)</label>
+          <input class="form-input" id="repoFace" type="number" placeholder="1000"/></div>
+        <div class="form-group"><label class="form-label">Piyasa Fiyatı (% nominal)</label>
+          <input class="form-input" id="repoPrice" type="number" step="0.1" placeholder="98.5"/></div>
+        <div class="form-group"><label class="form-label">Repo Faizi (%)</label>
+          <input class="form-input" id="repoRate" type="number" step="0.25" placeholder="42.5"/></div>
+        <div class="form-group"><label class="form-label">Repo Vadesi (Gün)</label>
+          <select class="form-select" id="repoTenor">
+            <option value="1">O/N (1 gün)</option>
+            <option value="7">1 Hafta</option>
+            <option value="14">2 Hafta</option>
+            <option value="30">1 Ay</option>
+          </select>
+        </div>
+      </div>
+      <button class="btn btn-primary w-full" onclick="calcRepo()">▶ Repo Hesapla</button>
+      <button class="btn btn-ghost  w-full mt-1" onclick="repoSample()">Sample</button>
+    </div>
+    <div id="repoResult">
+      <div class="coming-soon" style="min-height:250px">
+        <div class="coming-soon-icon">🏛</div>
+        <p>Teminat detaylarını girin. Haircut, net teminat değeri, nakit akışı hesaplanır.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ TCMB İHALE TAB ══ -->
+<div id="panel-tcmb" style="display:none">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">TCMB İhale Simülatörü</div>
+      <div style="background:rgba(37,99,235,.07);border-radius:var(--radius);padding:0.5rem 0.7rem;font-size:0.65rem;color:var(--accent);margin-bottom:0.75rem">
+        📅 TCMB Haftalık Repo İhalesi: <strong>Salı 10:00 — 11:00</strong><br>
+        Sabit fiyatlı ihale — politika faizinden, teminat limiti kadar
+      </div>
+      <div class="form-group"><label class="form-label">Bankanın İhtiyacı (M)</label>
+        <input class="form-input" id="auctNeed" type="number" placeholder="850"/></div>
+      <div class="form-group"><label class="form-label">TCMB Teminat Havuzu (M)</label>
+        <input class="form-input" id="auctColl" type="number" placeholder="1200"/></div>
+      <div class="form-group"><label class="form-label">Politika Faizi (%)</label>
+        <input class="form-input" id="auctPolicy" type="number" step="0.25" placeholder="42.5"/></div>
+      <div class="form-group"><label class="form-label">Piyasa Toplam Talep Tahmini (M)</label>
+        <input class="form-input" id="auctDemand" type="number" placeholder="50000"/></div>
+      <div class="form-group"><label class="form-label">TCMB Arzı Tahmini (M)</label>
+        <input class="form-input" id="auctSupply" type="number" placeholder="45000"/></div>
+      <div class="form-group"><label class="form-label">Teklif Stratejisi</label>
+        <select class="form-select" id="auctStrategy">
+          <option value="full">Tam — tüm ihtiyacı tek ihaleden karşıla</option>
+          <option value="partial">Kısmi — %65 TCMB, %35 interbank</option>
+          <option value="aggressive">Agresif — maksimum teklif</option>
+        </select>
+      </div>
+      <button class="btn btn-primary w-full" onclick="calcAuction()">▶ İhale Simüle Et</button>
+      <button class="btn btn-ghost  w-full mt-1" onclick="auctionSample()">Sample</button>
+    </div>
+    <div id="auctionResult">
+      <div class="coming-soon" style="min-height:250px">
+        <div class="coming-soon-icon">🏦</div>
+        <p>TCMB ihale parametrelerini girin. Tahsis tahmini, maliyet ve senaryo analizi üretilir.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ IB LİMİT TAB ══ -->
+<div id="panel-ib" style="display:none">
+  <div class="flex-between mb-2">
+    <div style="font-size:0.7rem;color:var(--text-muted)">Günlük interbank limit kullanımı — karşı banka bazında</div>
+    <div style="display:flex;gap:0.5rem">
+      <button class="btn btn-ghost" onclick="resetIBLimits()" style="font-size:0.68rem;color:var(--red)">🔄 Gün Sonu Sıfırla</button>
+      <button class="btn btn-primary" onclick="loadIBLimits()">⟳ Güncelle</button>
+    </div>
+  </div>
+  <div id="ibSummary" class="kpi-strip mb-2"></div>
+  <div class="card">
+    <table class="ib-table">
+      <thead><tr>
+        <th>Banka</th><th>Rating</th><th class="r">Limit (M)</th>
+        <th class="r">Kullanılan (M)</th><th class="r">Kalan (M)</th>
+        <th>Kullanım</th><th>Durum</th><th>Güncelle</th>
+      </tr></thead>
+      <tbody id="ibTableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ══ MALİYET RAPORU TAB ══ -->
+<div id="panel-report" style="display:none">
+  <div class="grid-2">
+    <div class="card">
+      <div class="card-title">İşlem Girişi</div>
+      <div id="reportTxList" style="max-height:200px;overflow-y:auto;margin-bottom:0.5rem"></div>
+      <div style="display:grid;grid-template-columns:1fr 80px 70px 60px 22px;gap:0.3rem;align-items:end;margin-bottom:0.5rem">
+        <input class="form-input" id="txSource"  placeholder="Kaynak (TCMB Repo, Interbank...)"/>
+        <input class="form-input" id="txAmount"  type="number" placeholder="M"/>
+        <input class="form-input" id="txRate"    type="number" step="0.1" placeholder="%"/>
+        <select class="form-select" id="txTenor">
+          <option value="1">O/N</option><option value="7">1W</option>
+          <option value="30">1M</option>
+        </select>
+        <button class="btn btn-ghost" onclick="addTx()" style="padding:0.38rem 0.5rem">+</button>
+      </div>
+      <div class="form-group"><label class="form-label">Toplam İhtiyaç (M)</label>
+        <input class="form-input" id="reportNeed" type="number" placeholder="850"/></div>
+      <div class="form-group"><label class="form-label">Politika Faizi (%)</label>
+        <input class="form-input" id="reportPolicy" type="number" step="0.25" placeholder="42.5"/></div>
+      <button class="btn btn-primary w-full" onclick="calcReport()">▶ Rapor Üret</button>
+      <button class="btn btn-ghost  w-full mt-1" onclick="reportSample()">Sample (dünkü işlemler)</button>
+    </div>
+    <div id="reportResult">
+      <div class="coming-soon" style="min-height:250px">
+        <div class="coming-soon-icon">📊</div>
+        <p>Günün tüm fonlama işlemlerini girin. WACF, kaynak mix ve verimlilik analizi üretilir.</p>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let reportTxs = [];
+
+// ── TAB ──────────────────────────────────────────────────────────────────────
+function switchTab(t) {
+  ['liq','repo','tcmb','ib','report'].forEach(x => {
+    document.getElementById('panel-'+x).style.display = x===t?'':'none';
+    document.getElementById('tab-'+x).classList.toggle('active', x===t);
+  });
+  if (t==='ib') loadIBLimits();
+}
+
+// ── SEANS BAR ─────────────────────────────────────────────────────────────────
+function updateSessions() {
+  const sessions = {
+    'Interbank': {o:9,c:17}, 'TCMB Repo': {o:10,c:11},
+    'BIST Tahvil': {o:9.5,c:17.5}, 'TCMB O/N': {o:16,c:16.5}
+  };
+  const now = new Date();
+  const h   = now.getHours() + now.getMinutes()/60;
+  const bar = Object.entries(sessions).map(([name,s]) => {
+    const open = h >= s.o && h < s.c;
+    return `<span class="session-pill ${open?'sess-open':'sess-closed'}">${open?'🟢':'⚫'} ${name}</span>`;
+  }).join('');
+  document.getElementById('sessionBar').innerHTML = bar;
+}
+updateSessions();
+setInterval(updateSessions, 60000);
+
+// ── LIVE RATES ────────────────────────────────────────────────────────────────
+async function loadLiveRates() {
+  const lbl = document.getElementById('mmLiveLabel');
+  if (lbl) lbl.textContent = '⏳ Yükleniyor...';
+  try {
+    const resp = await fetch('/api/mm/live-rates');
+    const d    = await resp.json();
+    if (d.error) throw new Error(d.error);
+    // Fill in what we got — policy rate is the key one
+    if (d.tcmb_policy_rate) document.getElementById('liqPolicy').value  = d.tcmb_policy_rate;
+    if (d.tlref_estimate)   document.getElementById('liqTLREF').value   = d.tlref_estimate;
+    if (d.ib_rate_estimate) document.getElementById('liqIBRate').value  = d.ib_rate_estimate;
+    if (d.tcmb_policy_rate) document.getElementById('auctPolicy').value = d.tcmb_policy_rate;
+    if (d.tcmb_policy_rate) document.getElementById('repoRate').value   = d.tcmb_policy_rate;
+    if (d.tcmb_policy_rate) document.getElementById('reportPolicy').value = d.tcmb_policy_rate;
+    const src = d._source === 'live' ? '🟢 TCMB Canlı' : '🟡 Tahmini';
+    if (lbl) lbl.textContent = `${src} · ${d.tcmb_policy_rate}% politika · ${d.generated_at}`;
+  } catch(e) {
+    if (lbl) lbl.textContent = '⚠️ Veri alınamadı';
+  }
+}
+
+// On page load, try to get live rates silently
+loadLiveRates();
+
+// ── SAMPLE ────────────────────────────────────────────────────────────────────
+async function loadSample() {
+  const resp = await fetch('/api/mm/sample');
+  const d    = await resp.json();
+  document.getElementById('liqOpening').value  = d.opening_balance_m;
+  document.getElementById('liqInflows').value  = d.expected_inflows_m;
+  document.getElementById('liqOutflows').value = d.expected_outflows_m;
+  document.getElementById('liqColl').value     = d.tcmb_collateral_m;
+  document.getElementById('liqPolicy').value   = d.tcmb_policy_rate;
+  document.getElementById('liqTLREF').value    = d.tlref;
+  document.getElementById('liqIBRate').value   = d.ib_rate;
+  document.getElementById('liqIBAvail').value  = d.ib_available_m;
+  document.getElementById('liqBuffer').value   = d.reserve_buffer_m;
+  calcLiquidity();
+}
+
+// ── LİKİDİTE ──────────────────────────────────────────────────────────────────
+async function calcLiquidity() {
+  const payload = {
+    opening_balance_m:   parseFloat(document.getElementById('liqOpening').value)||0,
+    expected_inflows_m:  parseFloat(document.getElementById('liqInflows').value)||0,
+    expected_outflows_m: parseFloat(document.getElementById('liqOutflows').value)||0,
+    tcmb_collateral_m:   parseFloat(document.getElementById('liqColl').value)||1200,
+    tcmb_policy_rate:    parseFloat(document.getElementById('liqPolicy').value)||42.5,
+    tlref:               parseFloat(document.getElementById('liqTLREF').value)||43.2,
+    ib_rate:             parseFloat(document.getElementById('liqIBRate').value)||43.5,
+    ib_available_m:      parseFloat(document.getElementById('liqIBAvail').value)||800,
+    reserve_buffer_m:    parseFloat(document.getElementById('liqBuffer').value)||100,
+  };
+  document.getElementById('liqResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Hesaplanıyor...</div>';
+  try {
+    const resp = await fetch('/api/mm/liquidity', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderLiquidity(d);
+  } catch(err) {
+    document.getElementById('liqResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderLiquidity(d) {
+  const stCls = d.status==='AÇIK'?'status-open':d.status==='FAZLA'?'status-excess':'status-bal';
+  const stColor = d.status==='AÇIK'?'var(--red)':d.status==='FAZLA'?'var(--green)':'var(--accent)';
+
+  const stratHTML = d.strategy.map(s => {
+    const pCls = s.priority===1?'p1':s.priority===2?'p2':'p3';
+    return `<div class="strategy-card">
+      <div class="priority-badge ${pCls}">${s.priority}</div>
+      <div>
+        <div class="source-name">${s.source}</div>
+        <div class="source-note">${s.note}</div>
+      </div>
+      <div class="source-rate" style="color:${s.priority===1?'var(--accent)':'var(--text-muted)'}">%${s.rate}</div>
+      <div class="source-amount">${s.amount_m.toLocaleString('tr-TR')}M</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('liqResult').innerHTML = `
+    <div class="status-banner ${stCls}" style="margin-bottom:0.75rem">
+      <div>
+        <div style="font-size:0.62rem;text-transform:uppercase;color:${stColor};font-weight:700">${d.status}</div>
+        <div style="font-family:var(--font-head);font-size:1.5rem;color:${stColor}">${d.need_m>0?d.need_m.toLocaleString('tr-TR'):d.excess_m.toLocaleString('tr-TR')}M TL</div>
+        <div style="font-size:0.65rem;color:${stColor}">${d.need_m>0?'Fonlanması gereken':'Plase edilebilecek'}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:0.62rem;color:${stColor}">WACF</div>
+        <div style="font-family:var(--font-head);font-size:1.2rem;color:${stColor}">%${d.wacf}</div>
+        <div style="font-size:0.65rem;color:${stColor}">Günlük: ${d.total_daily_cost.toLocaleString('tr-TR')}M TL</div>
+      </div>
+    </div>
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">Net Pozisyon</div><div class="stat-value ${d.net_position<0?'negative':'positive'}">${d.net_position>=0?'+':''}${d.net_position}M</div></div>
+      <div class="stat-box"><div class="stat-label">TCMB Teminat</div><div class="stat-value">${d.tcmb_collateral_m||1200}M</div></div>
+      <div class="stat-box"><div class="stat-label">Fonlanan</div><div class="stat-value positive">${d.funded_m}M</div></div>
+      <div class="stat-box"><div class="stat-label">Tasarruf vs All-IB</div><div class="stat-value gold">${d.saving_vs_allIB.toFixed(3)}M TL/gün</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Optimal Fonlama Stratejisi</div>
+      ${stratHTML || '<div style="font-size:0.7rem;color:var(--text-muted)">Fonlama ihtiyacı yok</div>'}
+    </div>`;
+}
+
+// ── REPO ──────────────────────────────────────────────────────────────────────
+function repoSample() {
+  document.getElementById('repoType').value     = 'tcmb';
+  document.getElementById('repoDir').value      = 'borrow';
+  document.getElementById('repoColl').value     = 'govbond';
+  document.getElementById('repoMaturity').value = '3';
+  document.getElementById('repoFace').value     = '1000';
+  document.getElementById('repoPrice').value    = '98.5';
+  document.getElementById('repoRate').value     = '42.5';
+  document.getElementById('repoTenor').value    = '1';
+  calcRepo();
+}
+
+async function calcRepo() {
+  const payload = {
+    collateral_type:      document.getElementById('repoColl').value,
+    collateral_face_m:    parseFloat(document.getElementById('repoFace').value)||1000,
+    collateral_price_pct: parseFloat(document.getElementById('repoPrice').value)||98.5,
+    maturity_years:       parseFloat(document.getElementById('repoMaturity').value)||3,
+    repo_rate:            parseFloat(document.getElementById('repoRate').value)||42.5,
+    repo_tenor_days:      parseInt(document.getElementById('repoTenor').value)||1,
+    repo_type:            document.getElementById('repoType').value,
+    direction:            document.getElementById('repoDir').value,
+    tcmb_rate: parseFloat(document.getElementById('liqPolicy').value) || parseFloat(document.getElementById('repoRate').value) || 46.0,
+    ib_rate:   parseFloat(document.getElementById('liqIBRate').value) || 47.0,
+  };
+  try {
+    const resp = await fetch('/api/mm/repo', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderRepo(d);
+  } catch(err) {
+    document.getElementById('repoResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderRepo(d) {
+  document.getElementById('repoResult').innerHTML = `
+    <div class="result-card">
+      <div style="font-size:0.62rem;color:var(--text-muted);margin-bottom:0.5rem">
+        ${d.repo_type.toUpperCase()} REPO — ${d.direction==='borrow'?'Borç Al (Repo)':'Borç Ver (Ters Repo)'}
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem;margin-bottom:0.75rem">
+        <div class="kpi-box">
+          <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase">Nominal Teminat</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem">${d.face_value_m}M</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">Piyasa: %${d.market_price_pct}</div>
+        </div>
+        <div class="kpi-box" style="border-left:3px solid var(--red)">
+          <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase">Haircut</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem;color:var(--red)">%${d.haircut_pct}</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">${d.haircut_key} vade</div>
+        </div>
+        <div class="kpi-box" style="border-left:3px solid var(--accent)">
+          <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase">Teminat Değeri (Net)</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem;color:var(--accent)">${d.collateral_value_m}M TL</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">= Repo tutarı</div>
+        </div>
+        <div class="kpi-box" style="border-left:3px solid var(--gold)">
+          <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase">Repo Faiz</div>
+          <div style="font-family:var(--font-head);font-size:1.1rem;color:var(--gold)">${d.repo_interest_m}M TL</div>
+          <div style="font-size:0.62rem;color:var(--text-muted)">%${d.repo_rate} × ${d.tenor_days} gün</div>
+        </div>
+      </div>
+      <div style="background:var(--surface);border-radius:var(--radius);padding:0.6rem 0.8rem;font-size:0.7rem;margin-bottom:0.5rem">
+        <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
+          <span style="color:var(--text-muted)">Bugün teslim</span>
+          <span style="font-family:var(--font-mono)">${d.collateral_value_m}M TL alındı</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-bottom:0.3rem">
+          <span style="color:var(--text-muted)">${d.far_date} iade</span>
+          <span style="font-family:var(--font-mono);color:var(--red)">${d.repo_repay_m}M TL ödenecek</span>
+        </div>
+        <div style="display:flex;justify-content:space-between">
+          <span style="color:var(--text-muted)">30 günlük maliyet</span>
+          <span style="font-family:var(--font-mono);color:var(--gold)">${d.rollover_30d_cost}M TL</span>
+        </div>
+      </div>
+      ${d.alt_saving_vs_ib > 0 ? `<div style="font-size:0.65rem;color:var(--green);padding:0.3rem 0">
+        ✓ Interbank yerine TCMB repo: ${d.alt_saving_vs_ib.toFixed(4)}M TL/gün tasarruf
+      </div>` : ''}
+    </div>`;
+}
+
+// ── TCMB İHALE ───────────────────────────────────────────────────────────────
+function auctionSample() {
+  document.getElementById('auctNeed').value    = '850';
+  document.getElementById('auctColl').value    = '1200';
+  document.getElementById('auctPolicy').value  = '42.5';
+  document.getElementById('auctDemand').value  = '50000';
+  document.getElementById('auctSupply').value  = '45000';
+  document.getElementById('auctStrategy').value= 'full';
+  calcAuction();
+}
+
+async function calcAuction() {
+  const payload = {
+    bank_need_m:            parseFloat(document.getElementById('auctNeed').value)||850,
+    tcmb_collateral_m:      parseFloat(document.getElementById('auctColl').value)||1200,
+    policy_rate:            parseFloat(document.getElementById('auctPolicy').value)||42.5,
+    system_total_demand_m:  parseFloat(document.getElementById('auctDemand').value)||50000,
+    tcmb_total_supply_m:    parseFloat(document.getElementById('auctSupply').value)||45000,
+    bid_strategy:           document.getElementById('auctStrategy').value,
+  };
+  try {
+    const resp = await fetch('/api/mm/tcmb-auction', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderAuction(d);
+  } catch(err) {
+    document.getElementById('auctionResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderAuction(d) {
+  const scenRows = d.alloc_scenarios.map((s,i) => {
+    const isBest = i === 2;  // %90 genellikle gerçekçi
+    return `<div class="auction-scenario ${isBest?'best':''}">
+      <span style="font-weight:${isBest?'700':'400'};color:${isBest?'var(--accent)':'var(--text-muted)'}">%${s.alloc_ratio*100}</span>
+      <span style="font-family:var(--font-mono)">${s.tcmb_alloc_m}M TCMB</span>
+      <span style="font-family:var(--font-mono);color:var(--gold)">${s.ib_need_m}M IB</span>
+      <span style="font-family:var(--font-mono)">${s.wacf}%</span>
+      <span style="font-family:var(--font-mono);color:${isBest?'var(--green)':'var(--text-muted)'}">${s.daily_cost_m.toFixed(4)}M/gün</span>
+    </div>`;
+  }).join('');
+
+  document.getElementById('auctionResult').innerHTML = `
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">Teklif Verilen</div><div class="stat-value accent">${d.bid_amount_m}M</div><div class="stat-sub">${d.strategy_note}</div></div>
+      <div class="stat-box"><div class="stat-label">Tahsis Oranı</div><div class="stat-value">%${d.alloc_ratio_pct}</div><div class="stat-sub">Piyasa tahmini</div></div>
+      <div class="stat-box"><div class="stat-label">Tahmini Tahsis</div><div class="stat-value positive">${d.allocated_m}M</div></div>
+      <div class="stat-box"><div class="stat-label">Kalan (IB)</div><div class="stat-value ${d.unfunded_m>0?'negative':''}">${d.unfunded_m}M</div></div>
+      <div class="stat-box"><div class="stat-label">WACF</div><div class="stat-value gold">%${d.wacf}</div><div class="stat-sub">Günlük: ${d.total_daily_cost.toFixed(4)}M</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Tahsis Senaryo Analizi</div>
+      <div style="display:grid;grid-template-columns:60px 1fr 1fr 1fr 1fr;gap:0.4rem;font-size:0.6rem;color:var(--text-muted);padding:0 0 0.3rem;border-bottom:1px solid var(--border)">
+        <span>Tahsis</span><span>TCMB</span><span>Interbank</span><span>WACF</span><span>Günlük Maliyet</span>
+      </div>
+      ${scenRows}
+      <div style="font-size:0.63rem;color:var(--text-muted);margin-top:0.5rem">
+        Mavi satır = %90 tahsis tahmini (tipik piyasa koşulları)
+      </div>
+    </div>`;
+}
+
+// ── INTERBANK LİMİTLER ───────────────────────────────────────────────────────
+async function loadIBLimits() {
+  try {
+    const resp = await fetch('/api/mm/ib-limits');
+    const d    = await resp.json();
+    renderIBLimits(d);
+  } catch(err) {}
+}
+
+function renderIBLimits(d) {
+  document.getElementById('ibSummary').innerHTML = `
+    <div class="stat-box"><div class="stat-label">Toplam Limit</div><div class="stat-value">${d.total_limit_m}M</div></div>
+    <div class="stat-box"><div class="stat-label">Kullanılan</div><div class="stat-value ${d.total_used_m>0?'negative':''}">${d.total_used_m}M</div></div>
+    <div class="stat-box"><div class="stat-label">Kullanılabilir</div><div class="stat-value positive">${d.total_available_m}M</div></div>
+    <div class="stat-box"><div class="stat-label">Kullanım</div><div class="stat-value ${d.usage_pct>70?'negative':''}">${d.usage_pct}%</div></div>`;
+
+  const rows = d.limits.map(l => {
+    const fillCls = l.usage_pct>=90?'u-full':l.usage_pct>=70?'u-warn':'u-ok';
+    return `<tr>
+      <td style="font-weight:500">${l.bank}</td>
+      <td><span class="badge badge-${l.rating.includes('AA')?'green':'blue'}">${l.rating}</span></td>
+      <td class="r">${l.limit_m}M</td>
+      <td class="r">${l.used_m}M</td>
+      <td class="r" style="color:var(--green)">${l.available_m}M</td>
+      <td style="min-width:80px">
+        <div class="usage-bar"><div class="usage-fill ${fillCls}" style="width:${l.usage_pct}%"></div></div>
+        <div style="font-size:0.58rem;color:var(--text-muted);text-align:right">${l.usage_pct}%</div>
+      </td>
+      <td><span class="badge ${l.status==='AÇIK'?'badge-green':l.status==='UYARI'?'badge-gold':'badge-red'}">${l.status}</span></td>
+      <td>
+        <input type="number" placeholder="kullanılan" style="width:70px;background:var(--surface);border:1px solid var(--border);border-radius:3px;color:var(--text);font-size:0.65rem;padding:2px 5px" id="ib-used-${l.bank.replace(/\s/g,'-')}"/>
+        <button class="btn btn-ghost" style="font-size:0.6rem;padding:2px 5px" onclick="updateIB('${l.bank}')">✓</button>
+      </td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('ibTableBody').innerHTML = rows;
+}
+
+async function updateIB(bank) {
+  const el  = document.getElementById('ib-used-'+bank.replace(/\s/g,'-'));
+  const val = parseFloat(el?.value||0);
+  await fetch('/api/mm/ib-limits', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({bank, used_m: val})});
+  loadIBLimits();
+}
+
+async function resetIBLimits() {
+  if (!confirm('Tüm interbank limit kullanımlarını sıfırla?')) return;
+  await fetch('/api/mm/ib-limits/reset', {method:'POST'});
+  loadIBLimits();
+}
+
+// ── FONlAMA RAPORU ────────────────────────────────────────────────────────────
+function addTx() {
+  const src = document.getElementById('txSource').value.trim();
+  const amt = parseFloat(document.getElementById('txAmount').value);
+  const rt  = parseFloat(document.getElementById('txRate').value);
+  const ten = parseInt(document.getElementById('txTenor').value);
+  if (!src || !amt || !rt) { alert('Kaynak, tutar ve faiz zorunlu.'); return; }
+  reportTxs.push({source:src, amount_m:amt, rate:rt, tenor_days:ten});
+  renderTxList();
+  document.getElementById('txSource').value = '';
+  document.getElementById('txAmount').value = '';
+  document.getElementById('txRate').value   = '';
+}
+
+function renderTxList() {
+  document.getElementById('reportTxList').innerHTML = reportTxs.map((t,i) =>
+    `<div style="display:grid;grid-template-columns:1fr 60px 60px 50px 22px;gap:0.3rem;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.25rem 0.4rem;font-size:0.65rem;margin-bottom:0.2rem">
+      <span>${t.source}</span><span style="text-align:right">${t.amount_m}M</span>
+      <span style="text-align:right">%${t.rate}</span><span style="text-align:right">${t.tenor_days}g</span>
+      <button style="background:none;border:none;color:var(--text-muted);cursor:pointer" onclick="reportTxs.splice(${i},1);renderTxList()">×</button>
+    </div>`
+  ).join('');
+}
+
+function reportSample() {
+  reportTxs = [
+    {source:'TCMB Repo İhalesi', amount_m:550, rate:42.5, tenor_days:1},
+    {source:'Interbank O/N',     amount_m:300, rate:43.5, tenor_days:1},
+  ];
+  renderTxList();
+  document.getElementById('reportNeed').value   = '850';
+  document.getElementById('reportPolicy').value = '42.5';
+  calcReport();
+}
+
+async function calcReport() {
+  if (!reportTxs.length) { alert('En az bir işlem ekleyin.'); return; }
+  const payload = {
+    transactions:    reportTxs,
+    total_need_m:    parseFloat(document.getElementById('reportNeed').value)||850,
+    policy_rate:     parseFloat(document.getElementById('reportPolicy').value)||46.0,
+    tlref:           parseFloat(document.getElementById('liqTLREF').value) || (parseFloat(document.getElementById('reportPolicy').value)||46.0) + 0.7,
+  };
+  try {
+    const resp = await fetch('/api/mm/funding-report', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderReport(d);
+  } catch(err) {
+    document.getElementById('reportResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderReport(d) {
+  const tcmbW = d.tcmb_pct;
+  const ibW   = d.ib_pct;
+  const txRows = d.transactions.map(t =>
+    `<div style="display:grid;grid-template-columns:1fr 70px 60px 80px 80px;gap:0.4rem;align-items:center;padding:0.3rem 0;border-bottom:1px solid var(--border-soft);font-size:0.7rem">
+      <span style="color:var(--text)">${t.source}</span>
+      <span style="text-align:right;font-family:var(--font-mono)">${t.amount_m}M</span>
+      <span style="text-align:right;color:var(--gold)">%${t.rate}</span>
+      <span style="text-align:right;color:var(--text-muted)">%${t.share_pct}</span>
+      <span style="text-align:right;font-family:var(--font-mono);color:var(--red)">${t.daily_cost_m.toFixed(4)}M</span>
+    </div>`
+  ).join('');
+
+  document.getElementById('reportResult').innerHTML = `
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">WACF</div><div class="stat-value gold">%${d.wacf}</div></div>
+      <div class="stat-box"><div class="stat-label">Günlük Maliyet</div><div class="stat-value negative">${d.total_daily_cost.toFixed(4)}M TL</div></div>
+      <div class="stat-box"><div class="stat-label">Aylık Maliyet</div><div class="stat-value">${d.monthly_cost_m.toFixed(2)}M TL</div></div>
+      <div class="stat-box"><div class="stat-label">Verimlilik</div><div class="stat-value positive">%${d.efficiency_pct}</div></div>
+    </div>
+    <div class="card mb-1">
+      <div class="card-title">Fonlama Karması</div>
+      <div class="mix-bar">
+        <div class="mix-tcmb" style="width:${tcmbW}%">TCMB %${tcmbW}</div>
+        <div class="mix-ib"   style="width:${ibW}%">IB %${ibW}</div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 70px 60px 80px 80px;gap:0.4rem;font-size:0.58rem;color:var(--text-muted);padding-bottom:0.3rem;border-bottom:1px solid var(--border)">
+        <span>Kaynak</span><span style="text-align:right">Tutar</span><span style="text-align:right">Faiz</span><span style="text-align:right">Oran</span><span style="text-align:right">Günlük</span>
+      </div>
+      ${txRows}
+    </div>
+    <div class="card">
+      <div class="card-title">Verimlilik Analizi</div>
+      <div style="font-size:0.7rem">
+        <div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid var(--border-soft)">
+          <span style="color:var(--text-muted)">Optimal maliyet (tamamı TCMB)</span>
+          <span style="font-family:var(--font-mono)">${d.optimal_cost_m.toFixed(4)}M TL</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:0.3rem 0;border-bottom:1px solid var(--border-soft)">
+          <span style="color:var(--text-muted)">Gerçek maliyet</span>
+          <span style="font-family:var(--font-mono)">${d.total_daily_cost.toFixed(4)}M TL</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;padding:0.3rem 0">
+          <span style="color:var(--text-muted)">Fazla maliyet (interbank mix nedeni)</span>
+          <span style="font-family:var(--font-mono);color:var(--red)">${d.excess_cost_m.toFixed(4)}M TL</span>
+        </div>
+      </div>
+    </div>`;
+}
+</script>
+{% endblock %}

@@ -1,0 +1,391 @@
+{% extends 'base.html' %}
+{% block title %}Behavioral Modeling — Bek Rate Desk{% endblock %}
+{% block extra_css %}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.25rem;}
+.tab-btn{padding:0.45rem 1.1rem;font-size:0.72rem;font-family:var(--font-mono);color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer;transition:all 0.15s;white-space:nowrap;}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+.layout{display:grid;grid-template-columns:290px 1fr;gap:1rem;align-items:start;}
+.af{display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;}
+.af .full{grid-column:span 2;}
+.ilist{display:flex;flex-direction:column;gap:0.3rem;max-height:200px;overflow-y:auto;}
+.irow{display:grid;gap:0.3rem;align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.3rem 0.5rem;font-size:0.67rem;}
+.xbtn{background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.75rem;}
+.xbtn:hover{color:var(--red);}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem;}
+.rt{width:100%;border-collapse:collapse;font-size:0.7rem;}
+.rt th{text-align:left;padding:0.3rem 0.5rem;color:var(--text-muted);font-size:0.6rem;text-transform:uppercase;letter-spacing:0.06em;border-bottom:1px solid var(--border);font-weight:400;}
+.rt td{padding:0.35rem 0.5rem;border-bottom:1px solid var(--border-soft);color:var(--text-dim);}
+.rt tr:hover td{background:var(--surface);color:var(--text);}
+.rt .r{text-align:right;font-variant-numeric:tabular-nums;}
+.rt .pos{color:var(--green);}
+.rt .neg{color:var(--red);}
+.beta-bar{height:6px;border-radius:3px;background:var(--accent);display:inline-block;}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Behavioral Modeling</h1>
+  <p>Deposit beta, stickiness, prepayment CPR, rate sensitivity curves — contractual ALM corrected for customer behavior</p>
+</div>
+
+<div class="tabs">
+  <div class="tab-btn active" id="tab-beta"   onclick="sw('beta')">Deposit Beta</div>
+  <div class="tab-btn"        id="tab-sticky" onclick="sw('sticky')">Stickiness</div>
+  <div class="tab-btn"        id="tab-prepay" onclick="sw('prepay')">Prepayment CPR</div>
+  <div class="tab-btn"        id="tab-curves" onclick="sw('curves')">Rate Sensitivity Curves</div>
+</div>
+
+<!-- ══ BETA ══ -->
+<div id="panel-beta">
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Deposit Products</div>
+      <div class="ilist" id="betaList"></div>
+      <hr class="sep"/>
+      <div class="af">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="bName" placeholder="e.g. Demand Deposits"/></div>
+        <div class="form-group full"><label class="form-label">Product Type</label>
+          <select class="form-select" id="bType">
+            <option value="demand_deposit">Demand Deposits</option>
+            <option value="time_deposit_3m">Time Deposits 3M</option>
+            <option value="time_deposit_6m">Time Deposits 6M</option>
+            <option value="time_deposit_12m">Time Deposits 12M</option>
+            <option value="savings">Savings</option>
+            <option value="wholesale_funding">Wholesale Funding</option>
+            <option value="sub_debt">Subordinated Debt</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Balance (M)</label><input class="form-input" id="bBal" type="number" placeholder="1000"/></div>
+        <div class="form-group"><label class="form-label">Rate (%)</label><input class="form-input" id="bRate" type="number" step="0.01" placeholder="42.0"/></div>
+        <div class="form-group"><label class="form-label">Beta (0–1)</label><input class="form-input" id="bBeta" type="number" step="0.01" placeholder="auto"/></div>
+        <div class="form-group"><label class="form-label">Lag (months)</label><input class="form-input" id="bLag" type="number" placeholder="auto"/></div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addBeta()">+ Add</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="af">
+        <div class="form-group"><label class="form-label">Rate Shock (bps)</label><input class="form-input" id="betaShock" type="number" value="100"/></div>
+        <div class="form-group"><label class="form-label">Horizon (months)</label><input class="form-input" id="betaHorizon" type="number" value="12"/></div>
+      </div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="runBeta()">▶ Run Beta Analysis</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadBetaSample()">Load Sample</button>
+    </div>
+  </div>
+  <div id="betaResults"><div class="coming-soon"><div class="coming-soon-icon">📊</div><h2>Deposit Beta</h2><p>Add deposit products and run analysis. Shows pass-through speed, NII benefit vs full contractual repricing.</p></div></div>
+</div>
+</div>
+
+<!-- ══ STICKINESS ══ -->
+<div id="panel-sticky" style="display:none">
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Non-Maturity Deposits</div>
+      <div class="ilist" id="stickyList"></div>
+      <hr class="sep"/>
+      <div class="af">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="sName" placeholder="e.g. Demand Deposits"/></div>
+        <div class="form-group full"><label class="form-label">Type</label>
+          <select class="form-select" id="sType">
+            <option value="demand_deposit">Demand Deposits</option>
+            <option value="savings">Savings Accounts</option>
+            <option value="time_deposit_3m">Time Deposit 3M</option>
+            <option value="wholesale_funding">Wholesale Funding</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Balance (M)</label><input class="form-input" id="sBal" type="number" placeholder="1500"/></div>
+        <div class="form-group"><label class="form-label">Core % (optional)</label><input class="form-input" id="sCore" type="number" step="1" placeholder="auto"/></div>
+        <div class="form-group full"><label class="form-label">Behavioral Maturity (yr)</label><input class="form-input" id="sMat" type="number" step="0.5" placeholder="auto"/></div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addSticky()">+ Add</button></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="form-group"><label class="form-label">Rate Shock (bps)</label><input class="form-input" id="stickyShock" type="number" value="100"/></div>
+      <button class="btn btn-primary w-full" style="margin-top:0.5rem" onclick="runSticky()">▶ Run Stickiness Analysis</button>
+      <button class="btn btn-ghost  w-full" style="margin-top:0.4rem" onclick="loadStickySample()">Load Sample</button>
+    </div>
+  </div>
+  <div id="stickyResults"><div class="coming-soon"><div class="coming-soon-icon">🏦</div><h2>Deposit Stickiness</h2><p>Decompose demand deposits into core (long behavioral duration) vs volatile (rate-sensitive) portions. See EVE impact difference.</p></div></div>
+</div>
+</div>
+
+<!-- ══ PREPAYMENT ══ -->
+<div id="panel-prepay" style="display:none">
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Loan Portfolio</div>
+      <div class="ilist" id="prepayList"></div>
+      <hr class="sep"/>
+      <div class="af">
+        <div class="form-group full"><label class="form-label">Name</label><input class="form-input" id="pName" placeholder="e.g. Mortgage Portfolio"/></div>
+        <div class="form-group full"><label class="form-label">Loan Type</label>
+          <select class="form-select" id="pType"><option value="mortgage">Mortgage</option><option value="consumer">Consumer</option><option value="corporate">Corporate</option><option value="sme">SME</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Balance (M)</label><input class="form-input" id="pBal" type="number" placeholder="1000"/></div>
+        <div class="form-group"><label class="form-label">Contract Rate (%)</label><input class="form-input" id="pCon" type="number" step="0.01" placeholder="43.5"/></div>
+        <div class="form-group"><label class="form-label">Market Rate (%)</label><input class="form-input" id="pMkt" type="number" step="0.01" placeholder="40.0"/></div>
+        <div class="form-group"><label class="form-label">Term (months)</label><input class="form-input" id="pTerm" type="number" placeholder="120"/></div>
+        <div class="form-group"><label class="form-label">Age (months)</label><input class="form-input" id="pAge" type="number" placeholder="12"/></div>
+        <div class="form-group"><label class="form-label">Base CPR (%)</label><input class="form-input" id="pCpr" type="number" step="0.1" placeholder="auto"/></div>
+        <div class="form-group full"><button class="btn btn-ghost w-full" onclick="addPrepay()">+ Add Loan</button></div>
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:0.4rem">
+      <button class="btn btn-primary w-full" onclick="runPrepay()">▶ Run Prepayment Model</button>
+      <button class="btn btn-ghost  w-full" onclick="loadPrepaySample()">Load Sample</button>
+    </div>
+  </div>
+  <div id="prepayResults"><div class="coming-soon"><div class="coming-soon-icon">💳</div><h2>Prepayment Model</h2><p>CPR-based model with PSA ramp and rate-driven refinancing incentive. Shows duration shortening and balance run-off.</p></div></div>
+</div>
+</div>
+
+<!-- ══ CURVES ══ -->
+<div id="panel-curves" style="display:none">
+  <div class="card mb-2">
+    <div class="flex-between">
+      <div class="card-title" style="margin:0">Rate Sensitivity Curves — NII across −300bps to +300bps</div>
+      <div class="flex-center gap-sm">
+        <input class="form-input" id="curveHorizon" type="number" value="12" style="width:60px" title="Horizon months"/>
+        <button class="btn btn-primary" onclick="runCurves()">▶ Run</button>
+        <button class="btn btn-ghost"   onclick="loadCurvesSample()">Load Sample Balance Sheet</button>
+      </div>
+    </div>
+    <div id="curvesStatus" style="font-size:0.68rem;color:var(--text-muted);margin-top:0.5rem">Load sample or use existing NII balance sheet to generate curves.</div>
+  </div>
+  <div id="curvesResults"><div class="coming-soon"><div class="coming-soon-icon">📈</div><h2>Rate Sensitivity Curves</h2><p>Continuous NII response curve, DV01, convexity, and asymmetry analysis of your balance sheet position.</p></div></div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let betaItems=[], stickyItems=[], prepayItems=[];
+let curveA=[], curveL=[];
+
+function sw(t){
+  ['beta','sticky','prepay','curves'].forEach(id=>{
+    document.getElementById('panel-'+id).style.display=t===id?'':'none';
+    document.getElementById('tab-'+id).classList.toggle('active',t===id);
+  });
+}
+
+function renderIlist(id,items,removeFn,tpl){
+  const el=document.getElementById(id);
+  if(!items.length){el.innerHTML='<div class="text-muted" style="font-size:0.7rem;padding:0.3rem">Empty — add items below</div>';return;}
+  el.innerHTML=items.map((it,i)=>`<div class="irow" style="grid-template-columns:1fr auto auto 22px">${tpl(it)}<button class="xbtn" onclick="${removeFn}(${i})">✕</button></div>`).join('');
+}
+
+// ── BETA ──────────────────────────────────────────────────────────────────
+function addBeta(){
+  const name=document.getElementById('bName').value.trim(), bal=parseFloat(document.getElementById('bBal').value), rate=parseFloat(document.getElementById('bRate').value);
+  if(!name||isNaN(bal)||isNaN(rate)){alert('Fill Name, Balance, Rate.');return;}
+  const item={name,product_type:document.getElementById('bType').value,balance:bal,current_rate:rate};
+  const b=document.getElementById('bBeta').value; if(b) item.beta=parseFloat(b);
+  const l=document.getElementById('bLag').value;  if(l) item.lag_months=parseInt(l);
+  betaItems.push(item); rlb();
+  ['bName','bBal','bRate','bBeta','bLag'].forEach(id=>document.getElementById(id).value='');
+}
+function removeBeta(i){betaItems.splice(i,1);rlb();}
+function rlb(){renderIlist('betaList',betaItems,'removeBeta',it=>`<span style="font-size:0.68rem;color:var(--text)">${it.name}</span><span style="font-size:0.63rem;color:var(--accent)">${it.balance.toLocaleString()}M</span><span style="font-size:0.63rem;color:var(--text-muted)">${it.current_rate}%</span>`);}
+
+function loadBetaSample(){
+  betaItems=[
+    {name:'Demand Deposits',    product_type:'demand_deposit',  balance:1500,current_rate:15.0},
+    {name:'Time Deposits 3M',   product_type:'time_deposit_3m', balance:1900,current_rate:42.0},
+    {name:'Time Deposits 6M',   product_type:'time_deposit_6m', balance:600, current_rate:40.0},
+    {name:'Wholesale Funding',  product_type:'wholesale_funding',balance:400,current_rate:44.0},
+    {name:'Subordinated Debt',  product_type:'sub_debt',        balance:200, current_rate:50.0},
+  ]; rlb(); document.getElementById('betaShock').value='100';
+}
+
+async function runBeta(){
+  if(!betaItems.length){alert('Add deposits or load sample.');return;}
+  document.getElementById('betaResults').innerHTML='<div class="loading"><div class="spinner"></div> Computing deposit beta pass-through...</div>';
+  try{
+    const r=await fetch('/api/behavioral/deposit-beta',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({products:betaItems,rate_shock_bps:parseFloat(document.getElementById('betaShock').value),horizon_months:parseInt(document.getElementById('betaHorizon').value)})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderBeta(d);
+  }catch(e){document.getElementById('betaResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderBeta(d){
+  const rows=d.products.map(p=>{
+    const bp=Math.round(p.beta*100);
+    return `<tr>
+      <td>${p.name}</td><td class="r">${fmt(p.balance)}M</td>
+      <td class="r">${p.current_rate_pct.toFixed(2)}%</td>
+      <td class="r"><div style="display:inline-flex;align-items:center;gap:5px"><div class="beta-bar" style="width:${Math.min(bp*0.55,55)}px"></div>${bp}%</div></td>
+      <td class="r">${p.lag_months}mo</td>
+      <td class="r">${p.contractual_new_rate_pct.toFixed(2)}%</td>
+      <td class="r">${p.behavioral_avg_rate_pct.toFixed(2)}%</td>
+      <td class="r pos">${p.nii_benefit_vs_contractual_m>=0?'+':''}${fmt(p.nii_benefit_vs_contractual_m)}M</td></tr>`;}).join('');
+  document.getElementById('betaResults').innerHTML=`
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Portfolio Beta</div><div class="stat-value">${(d.avg_portfolio_beta*100).toFixed(1)}%</div><div class="stat-sub">Wtd-avg pass-through</div></div>
+      <div class="stat-box"><div class="stat-label">Contractual Cost</div><div class="stat-value negative">${fmt(d.total_contractual_cost_m)}M</div><div class="stat-sub">Full shock pass-through</div></div>
+      <div class="stat-box"><div class="stat-label">Behavioral Cost</div><div class="stat-value">${fmt(d.total_behavioral_cost_m)}M</div><div class="stat-sub">Beta + lag adjusted</div></div>
+      <div class="stat-box"><div class="stat-label">NII Benefit</div><div class="stat-value positive">+${fmt(d.total_nii_benefit_m)}M</div><div class="stat-sub">Behavioral vs contractual</div></div>
+    </div>
+    <div class="card mb-2">
+      <div class="card-title">Deposit Beta — Pass-Through Analysis (+${d.shock_bps}bps shock)</div>
+      <div style="overflow-x:auto"><table class="rt">
+        <thead><tr><th>Product</th><th class="r">Balance</th><th class="r">Rate</th><th class="r">Beta</th><th class="r">Lag</th><th class="r">Contractual Rate</th><th class="r">Behavioral Rate</th><th class="r">NII Benefit</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    </div>
+    <div class="card"><div class="card-title">Rate Path (Contractual: dashed = full shock, Solid = behavioral)</div>
+      <div class="chart-box" id="chartBeta" style="height:200px"></div></div>`;
+  const months=Array.from({length:d.products[0]?.rate_path?.length||12},(_,i)=>i+1);
+  const traces=[];
+  d.products.forEach(p=>{
+    const contractual=Array(months.length).fill(p.contractual_new_rate_pct);
+    traces.push({type:'scatter',x:months,y:p.rate_path,mode:'lines',name:p.name,line:{width:1.5}});
+    traces.push({type:'scatter',x:months,y:contractual,mode:'lines',name:p.name+' (contract)',line:{width:1,dash:'dot'},showlegend:false,opacity:0.4});
+  });
+  Plotly.newPlot('chartBeta',traces,baseLayout('Rate (%)'),{displayModeBar:false,responsive:true});
+}
+
+// ── STICKINESS ─────────────────────────────────────────────────────────────
+function addSticky(){
+  const name=document.getElementById('sName').value.trim(), bal=parseFloat(document.getElementById('sBal').value);
+  if(!name||isNaN(bal)){alert('Fill Name and Balance.');return;}
+  const item={name,product_type:document.getElementById('sType').value,balance:bal};
+  const c=document.getElementById('sCore').value; if(c) item.core_fraction=parseFloat(c)/100;
+  const m=document.getElementById('sMat').value;  if(m) item.behavioral_maturity_years=parseFloat(m);
+  stickyItems.push(item); rls();
+  ['sName','sBal','sCore','sMat'].forEach(id=>document.getElementById(id).value='');
+}
+function removeSticky(i){stickyItems.splice(i,1);rls();}
+function rls(){renderIlist('stickyList',stickyItems,'removeSticky',it=>`<span style="font-size:0.68rem;color:var(--text)">${it.name}</span><span style="font-size:0.63rem;color:var(--accent)">${it.balance.toLocaleString()}M</span><span></span>`);}
+function loadStickySample(){stickyItems=[{name:'Demand Deposits',product_type:'demand_deposit',balance:1500},{name:'Savings Accounts',product_type:'savings',balance:800}];rls();}
+
+async function runSticky(){
+  if(!stickyItems.length){alert('Add deposits or load sample.');return;}
+  document.getElementById('stickyResults').innerHTML='<div class="loading"><div class="spinner"></div> Decomposing core vs volatile deposits...</div>';
+  try{
+    const r=await fetch('/api/behavioral/stickiness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({deposits:stickyItems,rate_shock_bps:parseFloat(document.getElementById('stickyShock').value)})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderSticky(d);
+  }catch(e){document.getElementById('stickyResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderSticky(d){
+  const rows=d.products.map(p=>`<tr>
+    <td>${p.name}</td><td class="r">${fmt(p.total_balance)}M</td>
+    <td class="r pos">${fmt(p.core_balance)}M (${p.core_fraction_pct}%)</td>
+    <td class="r neg">${fmt(p.volatile_balance)}M</td>
+    <td class="r">${p.behavioral_maturity_years}Y</td>
+    <td class="r neg">${fmt(p.contractual_eve_impact_m)}M</td>
+    <td class="r">${fmt(p.behavioral_eve_impact_m)}M</td>
+    <td class="r pos">${p.eve_benefit_from_stickiness_m>=0?'+':''}${fmt(p.eve_benefit_from_stickiness_m)}M</td></tr>`).join('');
+  document.getElementById('stickyResults').innerHTML=`
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Core Deposits</div><div class="stat-value positive">${fmt(d.total_core_m)}M</div><div class="stat-sub">Stable, long beh. duration</div></div>
+      <div class="stat-box"><div class="stat-label">Volatile Deposits</div><div class="stat-value">${fmt(d.total_volatile_m)}M</div><div class="stat-sub">Rate-sensitive, short dur.</div></div>
+      <div class="stat-box"><div class="stat-label">Contractual EVE Impact</div><div class="stat-value negative">${fmt(d.total_eve_contractual_m)}M</div><div class="stat-sub">Overnight duration</div></div>
+      <div class="stat-box"><div class="stat-label">Behavioral EVE Impact</div><div class="stat-value">${fmt(d.total_eve_behavioral_m)}M</div><div class="stat-sub">Core+volatile blended</div></div>
+      <div class="stat-box"><div class="stat-label">EVE Benefit</div><div class="stat-value positive">${d.eve_benefit_from_stickiness_m>=0?'+':''}${fmt(d.eve_benefit_from_stickiness_m)}M</div><div class="stat-sub">Behavioral vs contractual</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Deposit Stickiness Decomposition (+${d.shock_bps}bps shock)</div>
+      <div style="overflow-x:auto"><table class="rt">
+        <thead><tr><th>Product</th><th class="r">Total</th><th class="r">Core</th><th class="r">Volatile</th><th class="r">Beh. Maturity</th><th class="r">Contractual EVE</th><th class="r">Behavioral EVE</th><th class="r">EVE Benefit</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    </div>`;
+}
+
+// ── PREPAYMENT ─────────────────────────────────────────────────────────────
+function addPrepay(){
+  const name=document.getElementById('pName').value.trim(),bal=parseFloat(document.getElementById('pBal').value),cr=parseFloat(document.getElementById('pCon').value),mr=parseFloat(document.getElementById('pMkt').value);
+  if(!name||isNaN(bal)||isNaN(cr)||isNaN(mr)){alert('Fill all fields.');return;}
+  const item={name,loan_type:document.getElementById('pType').value,balance:bal,contract_rate:cr,market_rate:mr,
+    original_term_months:parseInt(document.getElementById('pTerm').value||120),age_months:parseInt(document.getElementById('pAge').value||0)};
+  const cpr=document.getElementById('pCpr').value; if(cpr) item.base_cpr=parseFloat(cpr);
+  prepayItems.push(item); rlp();
+  ['pName','pBal','pCon','pMkt','pTerm','pAge','pCpr'].forEach(id=>document.getElementById(id).value='');
+}
+function removePrepay(i){prepayItems.splice(i,1);rlp();}
+function rlp(){renderIlist('prepayList',prepayItems,'removePrepay',it=>`<span style="font-size:0.68rem;color:var(--text)">${it.name}</span><span style="font-size:0.63rem;color:var(--accent)">${it.balance.toLocaleString()}M</span><span style="font-size:0.63rem;color:var(--text-muted)">${it.contract_rate}% / ${it.market_rate}%</span>`);}
+function loadPrepaySample(){prepayItems=[{name:'Mortgage Portfolio',loan_type:'mortgage',balance:800,contract_rate:43.5,market_rate:40.0,original_term_months:120,age_months:18},{name:'SME Loans',loan_type:'sme',balance:500,contract_rate:46.0,market_rate:42.0,original_term_months:60,age_months:6}];rlp();}
+
+async function runPrepay(){
+  if(!prepayItems.length){alert('Add loans or load sample.');return;}
+  document.getElementById('prepayResults').innerHTML='<div class="loading"><div class="spinner"></div> Running CPR prepayment model...</div>';
+  try{
+    const r=await fetch('/api/behavioral/prepayment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({loans:prepayItems})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderPrepay(d);
+  }catch(e){document.getElementById('prepayResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderPrepay(d){
+  const rows=d.loans.map(l=>`<tr>
+    <td>${l.name}</td><td class="r">${fmt(l.original_balance)}M</td>
+    <td class="r">${l.contract_rate_pct.toFixed(2)}%</td><td class="r">${l.market_rate_pct.toFixed(2)}%</td>
+    <td class="r" style="color:var(--gold)">${l.refinance_incentive_bps}bps</td>
+    <td class="r">${l.base_cpr_pct.toFixed(1)}%</td>
+    <td class="r neg">${l.adjusted_cpr_pct.toFixed(1)}%</td>
+    <td class="r">${l.contractual_wal_years}Y</td>
+    <td class="r neg">${l.effective_life_years}Y</td>
+    <td class="r neg">-${l.duration_shortening_years}Y</td></tr>`).join('');
+  document.getElementById('prepayResults').innerHTML=`
+    <div class="card mb-2">
+      <div class="card-title">Prepayment Analysis — CPR + Refinancing Incentive</div>
+      <div style="overflow-x:auto"><table class="rt">
+        <thead><tr><th>Loan</th><th class="r">Balance</th><th class="r">Contract</th><th class="r">Market</th><th class="r">Refi Incentive</th><th class="r">Base CPR</th><th class="r">Adj CPR</th><th class="r">WAL (Contract)</th><th class="r">Eff Life</th><th class="r">Dur Shortening</th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-title">Balance Run-off Path (24 months)</div><div class="chart-box" id="chartBal" style="height:200px"></div></div>
+      <div class="card"><div class="card-title">Monthly CPR</div><div class="chart-box" id="chartCPR" style="height:200px"></div></div>
+    </div>`;
+  const traces1=d.loans.map(l=>({type:'scatter',x:l.monthly_data.map(m=>m.month),y:l.balance_path,mode:'lines',name:l.name,line:{width:1.5}}));
+  const traces2=d.loans.map(l=>({type:'scatter',x:l.monthly_data.map(m=>m.month),y:l.monthly_data.map(m=>m.cpr_pct),mode:'lines',name:l.name,line:{width:1.5}}));
+  Plotly.newPlot('chartBal',traces1,baseLayout('Balance (M)'),{displayModeBar:false,responsive:true});
+  Plotly.newPlot('chartCPR',traces2,baseLayout('CPR (%)'),{displayModeBar:false,responsive:true});
+}
+
+// ── CURVES ─────────────────────────────────────────────────────────────────
+function loadCurvesSample(){
+  curveA=[{name:'Floating Rate Loans',amount:2000,rate:47.5,repricing_months:1,type:'floating'},{name:'Fixed Corp Loans',amount:1200,rate:44.0,repricing_months:12,type:'fixed'},{name:'Gov Bonds',amount:900,rate:38.5,repricing_months:36,type:'fixed'},{name:'TLREF Loans',amount:500,rate:46.0,repricing_months:1,type:'floating'},{name:'Mortgages',amount:300,rate:35.0,repricing_months:60,type:'fixed'}];
+  curveL=[{name:'Demand Deposits',amount:1500,rate:15.0,repricing_months:1,type:'floating'},{name:'Time Deposits 3M',amount:1900,rate:42.0,repricing_months:3,type:'fixed'},{name:'Time Deposits 6M',amount:600,rate:40.0,repricing_months:6,type:'fixed'},{name:'Wholesale',amount:400,rate:44.0,repricing_months:12,type:'fixed'},{name:'Sub Debt',amount:200,rate:50.0,repricing_months:60,type:'fixed'}];
+  document.getElementById('curvesStatus').innerHTML='<span style="color:var(--green)">✓ Sample balance sheet loaded (same as NII module)</span>';
+}
+
+async function runCurves(){
+  if(!curveA.length){alert('Load sample balance sheet first.');return;}
+  document.getElementById('curvesResults').innerHTML='<div class="loading"><div class="spinner"></div> Sweeping -300bps to +300bps...</div>';
+  try{
+    const r=await fetch('/api/behavioral/sensitivity-curves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({assets:curveA,liabilities:curveL,horizon_months:parseInt(document.getElementById('curveHorizon').value),shock_range_bps:300,steps:15})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderCurves(d);
+  }catch(e){document.getElementById('curvesResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderCurves(d){
+  const shocks=d.curve.map(p=>p.shock_bps), niis=d.curve.map(p=>p.nii), deltas=d.curve.map(p=>p.delta_nii);
+  const posCls=d.position==='Asset-sensitive'?'positive':'negative';
+  document.getElementById('curvesResults').innerHTML=`
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Position</div><div class="stat-value ${posCls}">${d.position}</div></div>
+      <div class="stat-box"><div class="stat-label">DV01 (per 1bp)</div><div class="stat-value">${fmt(d.dv01_approx_m)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Convexity</div><div class="stat-value">${d.convexity.toFixed(1)}</div></div>
+      <div class="stat-box"><div class="stat-label">NII at +300bps</div><div class="stat-value ${d.nii_up300_m>=0?'positive':'negative'}">${d.nii_up300_m>=0?'+':''}${fmt(d.nii_up300_m)}M</div></div>
+      <div class="stat-box"><div class="stat-label">NII at -300bps</div><div class="stat-value ${d.nii_down300_m>=0?'positive':'negative'}">${d.nii_down300_m>=0?'+':''}${fmt(d.nii_down300_m)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Asymmetry</div><div class="stat-value">${d.asymmetry_m>=0?'+':''}${fmt(d.asymmetry_m)}M</div><div class="stat-sub">|up|−|down|</div></div>
+    </div>
+    <div class="grid-2">
+      <div class="card"><div class="card-title">NII Level vs Rate Shock</div><div class="chart-box" id="cNII" style="height:240px"></div></div>
+      <div class="card"><div class="card-title">ΔNII vs Rate Shock</div><div class="chart-box" id="cDelta" style="height:240px"></div></div>
+    </div>`;
+  Plotly.newPlot('cNII',[{type:'scatter',x:shocks,y:niis,mode:'lines',line:{color:'#2563eb',width:2},fill:'tozeroy',fillcolor:'rgba(37,99,235,0.07)'},{type:'scatter',x:[0],y:[d.base_nii],mode:'markers',marker:{color:'#f59e0b',size:10,symbol:'circle'},name:'Base NII'}],baseLayout('NII (M)'),{displayModeBar:false,responsive:true});
+  Plotly.newPlot('cDelta',[{type:'bar',x:shocks,y:deltas,marker:{color:deltas.map(v=>v>=0?'#10b981':'#ef4444')}},{type:'scatter',x:shocks,y:Array(shocks.length).fill(0),mode:'lines',line:{color:'#64748b',dash:'dot',width:1},showlegend:false}],baseLayout('ΔNII (M)'),{displayModeBar:false,responsive:true});
+}
+
+function baseLayout(y){return{paper_bgcolor:'transparent',plot_bgcolor:'transparent',margin:{t:5,b:35,l:50,r:10},font:{family:'DM Mono',size:9,color:'#64748b'},xaxis:{gridcolor:'#1e2233'},yaxis:{gridcolor:'#1e2233',title:{text:y,font:{size:9}}},legend:{font:{size:8},bgcolor:'transparent'}};}
+function fmt(v){if(v===null||v===undefined||isNaN(v))return'—';return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});}
+
+rlb();rls();rlp();
+</script>
+{% endblock %}

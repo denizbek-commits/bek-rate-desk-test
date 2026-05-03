@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% block title %}P&L Attribution — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+.attr-bar-wrap { display:flex; align-items:center; gap:0.6rem; margin:0.3rem 0; }
+.attr-bar-label { font-size:0.68rem; color:var(--text-muted); width:100px; flex-shrink:0; }
+.attr-bar-track { flex:1; height:8px; background:var(--panel); border-radius:4px; overflow:visible; position:relative; }
+.attr-bar-fill  { height:100%; border-radius:4px; transition:width 0.5s ease; position:absolute; top:0; }
+.attr-bar-val   { font-size:0.7rem; font-family:'DM Mono',monospace; width:72px; text-align:right; flex-shrink:0; }
+.waterfall-card {
+  background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:1.2rem 1.4rem;
+}
+.factor-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0.55rem 0.9rem; border-radius:6px; margin-bottom:0.4rem;
+  background:var(--panel); border-left:3px solid transparent;
+}
+.factor-row.positive { border-left-color:var(--green); }
+.factor-row.negative { border-left-color:var(--red); }
+.factor-row.neutral  { border-left-color:var(--border); }
+.factor-name  { font-size:0.73rem; color:var(--text-primary); font-weight:500; }
+.factor-desc  { font-size:0.62rem; color:var(--text-muted); margin-top:0.1rem; }
+.factor-val   { font-size:0.88rem; font-weight:700; font-family:'DM Mono',monospace; }
+.factor-val.pos { color:var(--green); }
+.factor-val.neg { color:var(--red); }
+.total-row {
+  display:flex; align-items:center; justify-content:space-between;
+  padding:0.65rem 0.9rem; border-radius:6px; margin-top:0.4rem;
+  background:var(--accent-glow); border:1px solid rgba(37,99,235,.2);
+}
+.snapshot-btn {
+  background:var(--panel); border:1px solid var(--border); border-radius:6px;
+  color:var(--text-secondary); font-size:0.7rem; padding:0.4rem 0.9rem;
+  cursor:pointer; transition:all 0.15s; font-family:'DM Mono',monospace;
+}
+.snapshot-btn:hover { border-color:var(--accent); color:var(--accent); }
+.moves-grid { display:flex; gap:0.7rem; flex-wrap:wrap; margin-bottom:1.2rem; }
+.move-chip {
+  background:var(--panel); border:1px solid var(--border); border-radius:6px;
+  padding:0.35rem 0.7rem; font-size:0.68rem; font-family:'DM Mono',monospace;
+}
+.move-chip .mc-val { font-weight:600; margin-left:0.3rem; }
+.move-chip .mc-val.up   { color:var(--red); }
+.move-chip .mc-val.down { color:var(--green); }
+.history-wrap { margin-top:1.5rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div style="padding:1.5rem 1.75rem">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
+    <div>
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:0.3rem">Risk Analitik</div>
+      <h1 style="font-size:1.35rem;font-weight:800;font-family:'Syne',sans-serif;margin:0">P&L Attribution</h1>
+    </div>
+    <div style="display:flex;gap:0.6rem;align-items:center">
+      <span id="dateRange" style="font-size:0.65rem;color:var(--text-muted)">—</span>
+      <button class="snapshot-btn" onclick="takeSnapshot()">📸 Snapshot Al</button>
+      <button class="btn btn-ghost" onclick="loadAttribution()" style="font-size:0.72rem">⟳ Hesapla</button>
+    </div>
+  </div>
+
+  <!-- Rate Move Chips -->
+  <div class="moves-grid" id="movesGrid"></div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.2rem">
+
+    <!-- Waterfall Breakdown -->
+    <div class="waterfall-card">
+      <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:1rem">Faktör Ayrıştırması</div>
+      <div id="factorRows"></div>
+    </div>
+
+    <!-- Bar Chart + Summary -->
+    <div>
+      <div class="waterfall-card" style="margin-bottom:1rem">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.8rem">Görsel Dağılım</div>
+        <div id="attrBars"></div>
+      </div>
+      <div class="waterfall-card">
+        <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.8rem">Snapshot Durumu</div>
+        <div id="snapshotInfo" style="font-size:0.68rem;color:var(--text-muted);line-height:1.8"></div>
+        <button class="snapshot-btn" style="margin-top:0.6rem;width:100%" onclick="takeSnapshot()">
+          📸 Şu Anki Durumu Kaydet
+        </button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- History Chart -->
+  <div class="history-wrap">
+    <div class="waterfall-card">
+      <div style="font-size:0.75rem;font-weight:600;color:var(--text-primary);margin-bottom:0.8rem">P&L Tarihçesi (Son 30 Gün)</div>
+      <div id="chartHistory" style="height:220px"></div>
+    </div>
+  </div>
+
+  <!-- Note -->
+  <div id="noteBox" style="display:none;margin-top:1rem;padding:0.7rem 1rem;background:var(--panel);border-radius:6px;border-left:3px solid var(--gold);font-size:0.68rem;color:var(--text-muted)"></div>
+
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+<script>
+const FACTORS = [
+  { key:'carry_m',    label:'Carry',           desc:'Kupon tahakkuku & zaman değeri',   icon:'🏦' },
+  { key:'duration_m', label:'Duration / Faiz', desc:'Oran hareketi × DV01',             icon:'📐' },
+  { key:'curve_m',    label:'Eğri Şekli',      desc:'Steepening / flattening etkisi',   icon:'〰️' },
+  { key:'fx_m',       label:'FX Delta',        desc:'Döviz pozisyonu × kur değişimi',   icon:'💱' },
+  { key:'residual_m', label:'Artık',            desc:'Açıklanamayan / model farkı',      icon:'🔍' },
+];
+
+function loadAttribution() {
+  fetch('/api/pnl-attribution/calculate')
+    .then(r => r.json())
+    .then(data => {
+      renderMoves(data.rate_moves || {});
+      renderFactors(data.attribution, data);
+      renderBars(data.attribution);
+      renderSnapshotInfo(data);
+      document.getElementById('dateRange').textContent =
+        `${data.from_date} → ${data.to_date}`;
+      if (data.note) {
+        document.getElementById('noteBox').style.display = 'block';
+        document.getElementById('noteBox').textContent = data.note;
+      }
+    })
+    .catch(e => console.error('Attribution error:', e));
+
+  fetch('/api/pnl-attribution/history')
+    .then(r => r.json())
+    .then(h => renderHistory(h))
+    .catch(() => {});
+}
+
+function renderMoves(moves) {
+  const g = document.getElementById('movesGrid');
+  g.innerHTML = Object.entries(moves).map(([k,v]) => {
+    const cls = v > 0 ? 'up' : 'down';
+    const arrow = v > 0 ? '↑' : '↓';
+    return `<div class="move-chip">${k}<span class="mc-val ${cls}">${arrow} ${Math.abs(v).toFixed(2)}</span></div>`;
+  }).join('');
+}
+
+function renderFactors(attr, data) {
+  const rows = document.getElementById('factorRows');
+  let html = '';
+  let running = 0;
+  for (const f of FACTORS) {
+    const val = attr[f.key] || 0;
+    running += val;
+    const cls = val > 0 ? 'positive' : val < 0 ? 'negative' : 'neutral';
+    const vcls = val > 0 ? 'pos' : 'neg';
+    html += `
+      <div class="factor-row ${cls}">
+        <div>
+          <div class="factor-name">${f.icon} ${f.label}</div>
+          <div class="factor-desc">${f.desc}</div>
+        </div>
+        <div class="factor-val ${vcls}">${val >= 0 ? '+' : ''}${val.toFixed(3)} M TL</div>
+      </div>`;
+  }
+  // Total
+  const tv  = attr.total_m || 0;
+  const tvc = tv >= 0 ? 'pos' : 'neg';
+  html += `
+    <div class="total-row">
+      <div style="font-size:0.75rem;font-weight:700;color:var(--text-primary)">💼 Toplam P&L</div>
+      <div class="factor-val ${tvc}" style="font-size:1rem">${tv >= 0 ? '+' : ''}${tv.toFixed(3)} M TL</div>
+    </div>`;
+  rows.innerHTML = html;
+}
+
+function renderBars(attr) {
+  const container = document.getElementById('attrBars');
+  const maxVal = Math.max(...FACTORS.map(f => Math.abs(attr[f.key] || 0)), 0.001);
+
+  container.innerHTML = FACTORS.map(f => {
+    const val  = attr[f.key] || 0;
+    const pct  = Math.abs(val) / maxVal * 100;
+    const col  = val >= 0 ? 'var(--green)' : 'var(--red)';
+    const vcls = val >= 0 ? 'pos' : 'neg';
+    return `
+      <div class="attr-bar-wrap">
+        <div class="attr-bar-label">${f.label}</div>
+        <div class="attr-bar-track">
+          <div class="attr-bar-fill" style="width:${pct}%;background:${col}"></div>
+        </div>
+        <div class="attr-bar-val" style="color:${col}">${val >= 0 ? '+' : ''}${val.toFixed(3)}</div>
+      </div>`;
+  }).join('');
+}
+
+function renderSnapshotInfo(data) {
+  const box = document.getElementById('snapshotInfo');
+  box.innerHTML = `
+    <div>Kayıt: <b>${data.from_label || '—'}</b> → <b>${data.to_label || '—'}</b></div>
+    <div>Tarih aralığı: ${data.from_date || '—'} – ${data.to_date || '—'}</div>
+    <div>Tutma süresi: ${data.holding_days || 1} gün</div>
+    <div style="margin-top:0.4rem;color:${data.has_data ? 'var(--green)' : 'var(--gold)'}">
+      ${data.has_data ? '✓ Gerçek veriden hesaplandı' : '⚠ Örnek veriler — snapshot gerekli'}
+    </div>
+  `;
+}
+
+function renderHistory(hist) {
+  if (!hist || hist.length === 0) return;
+  const dates  = hist.map(h => h.date);
+  const traces = [
+    { name:'Carry',    key:'carry_m',    color:'var(--green)' },
+    { name:'Duration', key:'duration_m', color:'var(--accent)' },
+    { name:'Eğri',     key:'curve_m',    color:'var(--gold)' },
+    { name:'FX',       key:'fx_m',       color:'#a78bfa' },
+  ].map(t => ({
+    x: dates, y: hist.map(h => h[t.key] || 0),
+    type:'bar', name:t.name,
+    marker:{ color:t.color },
+  }));
+
+  const total = {
+    x: dates, y: hist.map(h => h.total_m || 0),
+    type:'scatter', mode:'lines+markers', name:'Toplam',
+    line:{ color:'#e2e8f0', width:2 },
+    marker:{ size:4 },
+  };
+
+  Plotly.newPlot('chartHistory', [...traces, total], {
+    barmode:'relative',
+    paper_bgcolor:'transparent', plot_bgcolor:'transparent',
+    font:{ color:'#e2e8f0', family:'DM Mono', size:10 },
+    margin:{ l:40, r:10, t:10, b:40 },
+    legend:{ orientation:'h', y:-0.15 },
+    xaxis:{ gridcolor:'#1e2233', tickfont:{size:9} },
+    yaxis:{ gridcolor:'#1e2233', title:'M TL', titlefont:{size:9} },
+  }, { responsive:true, displayModeBar:false });
+}
+
+function takeSnapshot() {
+  const btn = event.target;
+  btn.textContent = '⏳ Kaydediliyor...';
+  btn.disabled = true;
+  fetch('/api/pnl-attribution/snapshot', { method:'POST' })
+    .then(r => r.json())
+    .then(d => {
+      btn.textContent = d.status === 'ok' ? '✓ Kaydedildi' : '✗ Hata';
+      setTimeout(() => { btn.textContent = '📸 Snapshot Al'; btn.disabled = false; }, 2000);
+      loadAttribution();
+    })
+    .catch(() => { btn.textContent = '✗ Hata'; btn.disabled = false; });
+}
+
+loadAttribution();
+setInterval(loadAttribution, 300000);  // her 5 dakika
+</script>
+{% endblock %}

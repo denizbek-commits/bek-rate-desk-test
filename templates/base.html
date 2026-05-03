@@ -1,0 +1,1509 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>{% block title %}Bek Rate Desk{% endblock %}</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet"/>
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+
+  <style>
+    /* ── RESET ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── CSS VARIABLES ── */
+    :root {
+      --bg:          #08090d;
+      --surface:     #0e1017;
+      --panel:       #13151e;
+      --border:      #1e2233;
+      --border-soft: #181b28;
+      --accent:      #2563eb;
+      --accent-dim:  #1d4ed8;
+      --accent-glow: rgba(37,99,235,0.18);
+      --gold:        #f59e0b;
+      --gold-dim:    rgba(245,158,11,0.12);
+      --green:       #10b981;
+      --green-dim:   rgba(16,185,129,0.12);
+      --red:         #ef4444;
+      --red-dim:     rgba(239,68,68,0.12);
+      --yellow:      #fbbf24;
+      --text:        #e2e8f0;
+      --text-muted:  #64748b;
+      --text-dim:    #94a3b8;
+      --font-mono:   'DM Mono', monospace;
+      --font-head:   'Syne', sans-serif;
+      --radius:      6px;
+      --sidebar-w:   220px;
+      --topbar-h:    48px;
+    }
+
+    /* ── BASE ── */
+    html { font-size: 14px; scroll-behavior: smooth; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100vh;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* scanline texture */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+      pointer-events: none;
+      z-index: 9999;
+      opacity: 0.35;
+    }
+
+    /* ══════════════════════════════════════════════════════════
+       TOP BAR
+    ══════════════════════════════════════════════════════════ */
+    .topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      padding: 0 1rem;
+      gap: 1rem;
+    }
+
+    .brand {
+      font-family: var(--font-head);
+      font-weight: 800;
+      font-size: 0.95rem;
+      letter-spacing: 0.04em;
+      color: var(--text);
+      text-decoration: none;
+      white-space: nowrap;
+      display: flex;
+      align-items: center;
+      gap: 0.45rem;
+      min-width: calc(var(--sidebar-w) - 1rem);
+    }
+    .brand-dot {
+      width: 7px; height: 7px;
+      background: var(--accent);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--accent);
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    @keyframes pulse-dot {
+      0%,100% { opacity:1; box-shadow:0 0 8px var(--accent); }
+      50%      { opacity:0.5; box-shadow:0 0 2px var(--accent); }
+    }
+
+    /* CMD search */
+    .cmd-wrap {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      max-width: 480px;
+    }
+    .cmd-label {
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      white-space: nowrap;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 2px 6px;
+    }
+    .cmd-input {
+      flex: 1;
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      padding: 0.28rem 0.65rem;
+      outline: none;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .cmd-input::placeholder { color: var(--text-muted); }
+    .cmd-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+
+    /* top-right status strip */
+    .topbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+    }
+    .status-pill {
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-size: 0.65rem;
+      color: var(--text-muted);
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+    }
+    .status-dot.live   { background: var(--green); box-shadow: 0 0 5px var(--green); }
+    .status-dot.warn   { background: var(--gold); }
+    .status-dot.off    { background: var(--border); }
+
+    #liveClock {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      letter-spacing: 0.06em;
+    }
+
+    /* sidebar toggle btn */
+    .sidebar-toggle {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 1.1rem;
+      padding: 0 0.25rem;
+      display: flex;
+      align-items: center;
+      transition: color 0.15s;
+    }
+    .sidebar-toggle:hover { color: var(--text); }
+
+    /* ══════════════════════════════════════════════════════════
+       SIDEBAR
+    ══════════════════════════════════════════════════════════ */
+    .sidebar {
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0;
+      bottom: 0;
+      width: var(--sidebar-w);
+      background: var(--surface);
+      border-right: 1px solid var(--border);
+      z-index: 900;
+      overflow-y: auto;
+      overflow-x: hidden;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+      transition: transform 0.2s ease, width 0.2s ease;
+    }
+    .sidebar::-webkit-scrollbar { width: 3px; }
+    .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    .sidebar.collapsed {
+      transform: translateX(calc(-1 * var(--sidebar-w)));
+    }
+
+    /* nav group */
+    .nav-group {
+      padding: 0.6rem 0 0.25rem;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .nav-group:last-child { border-bottom: none; }
+
+    .nav-group-label {
+      font-size: 0.55rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--text-muted);
+      padding: 0.2rem 1rem 0.4rem;
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+      opacity: 0.7;
+    }
+    .nav-group-label span { flex: 1; }
+
+    .nav-link {
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      padding: 0.38rem 1rem;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      border-left: 2px solid transparent;
+      transition: color 0.15s, background 0.15s, border-color 0.15s;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .nav-link:hover {
+      color: var(--text);
+      background: var(--panel);
+      border-left-color: var(--border);
+    }
+    .nav-link.active {
+      color: var(--accent);
+      background: var(--accent-glow);
+      border-left-color: var(--accent);
+    }
+    .nav-link .nav-icon {
+      font-size: 0.8rem;
+      width: 16px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .nav-link .nav-label { flex: 1; }
+    .nav-link .nav-cmd {
+      font-size: 0.55rem;
+      color: var(--border);
+      font-family: var(--font-mono);
+      padding: 1px 4px;
+      border: 1px solid var(--border-soft);
+      border-radius: 3px;
+      opacity: 0;
+      transition: opacity 0.15s;
+    }
+    .nav-link:hover .nav-cmd { opacity: 1; }
+
+    .nav-tag {
+      font-size: 0.52rem;
+      background: var(--accent-glow);
+      color: var(--accent);
+      border: 1px solid rgba(37,99,235,0.3);
+      border-radius: 3px;
+      padding: 0px 4px;
+      font-weight: 500;
+      flex-shrink: 0;
+    }
+    .nav-tag-new  { background:rgba(16,185,129,.15); color:var(--green); border-color:rgba(16,185,129,.3); }
+
+    /* sidebar footer */
+    .sidebar-footer {
+      padding: 0.75rem 1rem;
+      border-top: 1px solid var(--border-soft);
+      font-size: 0.6rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .sidebar-footer .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); }
+
+    /* ══════════════════════════════════════════════════════════
+       MAIN CONTENT
+    ══════════════════════════════════════════════════════════ */
+    .main {
+      margin-left: var(--sidebar-w);
+      margin-top: var(--topbar-h);
+      padding: 1.5rem 1.75rem 4rem;
+      min-height: calc(100vh - var(--topbar-h));
+      transition: margin-left 0.2s ease;
+      max-width: calc(100vw - var(--sidebar-w));
+      overflow-x: hidden;
+    }
+    .main.expanded { margin-left: 0; max-width: 100vw; }
+
+    /* ── PAGE HEADER ── */
+    .page-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .page-header h1 {
+      font-family: var(--font-head);
+      font-weight: 700;
+      font-size: 1.35rem;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+    .page-header p {
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      margin-top: 0.2rem;
+    }
+
+    /* ── CARDS ── */
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.1rem 1.25rem;
+    }
+    .card-title {
+      font-family: var(--font-head);
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--text-dim);
+      margin-bottom: 0.9rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .card-title::before {
+      content: '';
+      width: 3px; height: 13px;
+      background: var(--accent);
+      border-radius: 2px;
+      display: block;
+      flex-shrink: 0;
+    }
+
+    /* ── GRID LAYOUTS ── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; }
+    .grid-4 { display: grid; grid-template-columns: repeat(4,1fr); gap: 1rem; }
+    .col-span-2 { grid-column: span 2; }
+    .col-span-3 { grid-column: span 3; }
+
+    /* responsive grid */
+    @media (max-width: 1100px) {
+      .grid-3 { grid-template-columns: 1fr 1fr; }
+      .grid-4 { grid-template-columns: 1fr 1fr; }
+    }
+    @media (max-width: 780px) {
+      .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+      .col-span-2, .col-span-3 { grid-column: span 1; }
+      .sidebar { transform: translateX(calc(-1 * var(--sidebar-w))); }
+      .sidebar.mobile-open { transform: translateX(0); }
+      .main { margin-left: 0; max-width: 100vw; }
+    }
+
+    /* ── KPI STRIP ── */
+    .kpi-strip {
+      display: flex;
+      gap: 0.75rem;
+      margin-bottom: 1.25rem;
+      flex-wrap: wrap;
+    }
+    .stat-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      flex: 1;
+      min-width: 110px;
+    }
+    .stat-label {
+      font-size: 0.6rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--text-muted);
+      margin-bottom: 0.3rem;
+    }
+    .stat-value {
+      font-family: var(--font-mono);
+      font-size: 1.35rem;
+      font-weight: 500;
+      color: var(--text);
+      line-height: 1;
+    }
+    .stat-value.positive { color: var(--green); }
+    .stat-value.negative { color: var(--red); }
+    .stat-value.accent   { color: var(--accent); }
+    .stat-value.gold     { color: var(--gold); }
+    .stat-sub { font-size: 0.6rem; color: var(--text-muted); margin-top: 0.25rem; }
+
+    /* ── FORM ELEMENTS ── */
+    .form-group { display:flex; flex-direction:column; gap:0.25rem; margin-bottom:0.65rem; }
+    .form-label { font-size:0.6rem; text-transform:uppercase; letter-spacing:0.08em; color:var(--text-muted); }
+    .form-input, .form-select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      padding: 0.38rem 0.6rem;
+      outline: none;
+      width: 100%;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .form-input:focus, .form-select:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow);
+    }
+    .form-select option { background: var(--panel); }
+
+    /* ── BUTTONS ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.9rem;
+      border-radius: var(--radius);
+      border: none;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      text-decoration: none;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+    }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: var(--accent-dim); }
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+    }
+    .btn-ghost:hover { background:var(--surface); color:var(--text); border-color:var(--accent); }
+    .btn-gold { background: var(--gold-dim); color:var(--gold); border:1px solid rgba(245,158,11,0.3); }
+    .btn-gold:hover { background:rgba(245,158,11,0.2); }
+    .btn-danger { background:var(--red-dim); color:var(--red); border:1px solid rgba(239,68,68,0.3); }
+
+    /* ── TABLES ── */
+    .data-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+    .data-table th {
+      text-align:left; padding:0.4rem 0.65rem;
+      color:var(--text-muted); font-size:0.6rem; text-transform:uppercase;
+      letter-spacing:0.08em; border-bottom:1px solid var(--border); font-weight:400;
+    }
+    .data-table td { padding:0.42rem 0.65rem; border-bottom:1px solid var(--border-soft); color:var(--text-dim); }
+    .data-table tr:hover td { background:var(--surface); color:var(--text); }
+    .data-table .num { text-align:right; font-variant-numeric:tabular-nums; }
+    .data-table .pos { color:var(--green); }
+    .data-table .neg { color:var(--red); }
+
+    /* ── BADGES ── */
+    .badge { display:inline-flex; align-items:center; padding:2px 7px; border-radius:3px; font-size:0.58rem; font-weight:500; text-transform:uppercase; letter-spacing:0.06em; }
+    .badge-blue   { background:var(--accent-glow);  color:var(--accent); border:1px solid rgba(37,99,235,0.25); }
+    .badge-green  { background:var(--green-dim);     color:var(--green);  border:1px solid rgba(16,185,129,0.25); }
+    .badge-red    { background:var(--red-dim);        color:var(--red);    border:1px solid rgba(239,68,68,0.25); }
+    .badge-gold   { background:var(--gold-dim);       color:var(--gold);   border:1px solid rgba(245,158,11,0.25); }
+    .badge-muted  { background:var(--panel);          color:var(--text-muted); border:1px solid var(--border); }
+
+    /* ── TOGGLE ── */
+    .toggle-row { display:flex; align-items:center; gap:0.65rem; margin-bottom:0.65rem; }
+    .toggle-label { font-size:0.68rem; color:var(--text-dim); }
+    .toggle { position:relative; width:34px; height:18px; }
+    .toggle input { opacity:0; width:0; height:0; }
+    .toggle-slider { position:absolute; inset:0; background:var(--border); border-radius:18px; cursor:pointer; transition:background 0.2s; }
+    .toggle-slider::before { content:''; position:absolute; width:12px; height:12px; left:3px; bottom:3px; background:var(--text-muted); border-radius:50%; transition:transform 0.2s, background 0.2s; }
+    .toggle input:checked + .toggle-slider { background:var(--accent); }
+    .toggle input:checked + .toggle-slider::before { transform:translateX(16px); background:#fff; }
+
+    /* ── SEPARATOR ── */
+    .sep { border:none; border-top:1px solid var(--border-soft); margin:1rem 0; }
+
+    /* ── LOADING ── */
+    .loading { display:flex; align-items:center; gap:0.5rem; color:var(--text-muted); font-size:0.72rem; padding:2rem; justify-content:center; }
+    .spinner { width:13px; height:13px; border:2px solid var(--border); border-top-color:var(--accent); border-radius:50%; animation:spin 0.7s linear infinite; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* ── COMING SOON ── */
+    .coming-soon { display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:260px; gap:0.9rem; color:var(--text-muted); }
+    .coming-soon-icon { font-size:2.2rem; opacity:0.3; }
+    .coming-soon h2 { font-family:var(--font-head); font-size:1rem; color:var(--text-dim); }
+    .coming-soon p { font-size:0.72rem; text-align:center; max-width:300px; line-height:1.6; }
+
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width:5px; height:5px; }
+    ::-webkit-scrollbar-track { background:var(--bg); }
+    ::-webkit-scrollbar-thumb { background:var(--border); border-radius:3px; }
+    ::-webkit-scrollbar-thumb:hover { background:var(--text-muted); }
+
+    /* ── UTILS ── */
+    .flex          { display:flex; }
+    .flex-center   { display:flex; align-items:center; }
+    .flex-between  { display:flex; align-items:center; justify-content:space-between; }
+    .gap-sm        { gap:0.5rem; }
+    .gap-md        { gap:1rem; }
+    .mt-1          { margin-top:0.5rem; }
+    .mt-2          { margin-top:1rem; }
+    .mb-1          { margin-bottom:0.5rem; }
+    .mb-2          { margin-bottom:1rem; }
+    .text-right    { text-align:right; }
+    .text-muted    { color:var(--text-muted); }
+    .text-mono     { font-family:var(--font-mono); }
+    .w-full        { width:100%; }
+
+    /* ── KPIS CONSISTENT ── */
+    .kpi-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.6rem 0.85rem;
+    }
+
+    /* ── SHORTCUT TOOLTIP ── */
+    #shortcutToast {
+      position: fixed;
+      bottom: 1.5rem;
+      left: calc(var(--sidebar-w) + 1.5rem);
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 0.75rem 1rem;
+      font-size: 0.65rem;
+      color: var(--text-dim);
+      z-index: 800;
+      display: none;
+      line-height: 1.8;
+      min-width: 280px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+    #shortcutToast.show { display: block; }
+    #shortcutToast h4 { font-family:var(--font-head); font-size:0.68rem; color:var(--text); margin-bottom:0.4rem; }
+    .sc-row { display:flex; justify-content:space-between; gap:2rem; }
+    .sc-key { background:var(--surface); border:1px solid var(--border); border-radius:3px; padding:1px 5px; font-family:var(--font-mono); color:var(--accent); font-size:0.6rem; }
+
+    @media print {
+      .sidebar,.topbar,.btn,#shortcutToast{display:none!important}
+      .main{margin-left:0!important;padding:1rem!important;max-width:100vw!important}
+      body::before{display:none!important}
+    }
+
+    {% block extra_css %}{% endblock %}
+  </style>
+</head>
+<body>
+
+<!-- ═══ TOP BAR ═══ -->
+<div class="topbar">
+  <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar (Alt+S)">☰</button>
+  <a class="brand" href="/">
+    <span class="brand-dot"></span>
+    BEK RATE DESK
+  </a>
+
+  <div class="cmd-wrap">
+    <span class="cmd-label">⌘</span>
+    <input class="cmd-input" id="cmdInput" type="text"
+      placeholder="Type shortcode + Enter — bs, nii, eve, brief, hedge, trade, mm, bond, yc, mc, cfg…"/>
+  </div>
+
+  <div class="topbar-right">
+    <!-- Data health strip — 4 sources -->
+    <div id="dataHealthStrip" style="display:flex;gap:0.35rem;align-items:center;margin-right:0.5rem;"
+         title="Veri kaynakları durumu — tıkla ayrıntılar için" onclick="toggleHealthPanel()" style="cursor:pointer;">
+    </div>
+    <div class="status-pill">
+      <div class="status-dot live"></div>
+      <span>LIVE</span>
+    </div>
+    <div class="status-pill" id="liveClock"></div>
+    <button class="btn btn-ghost" style="font-size:0.65rem;padding:0.28rem 0.6rem" onclick="toggleShortcuts()" title="Keyboard shortcuts (?)">⌨</button>
+    <a class="btn btn-ghost" href="/morning-brief" style="font-size:0.65rem;padding:0.28rem 0.6rem">🌅 Brief</a>
+    <a class="btn btn-ghost" href="/settings" style="font-size:0.65rem;padding:0.28rem 0.6rem" title="Ayarlar">⚙️</a>
+  </div>
+</div>
+
+<!-- Data health flyout panel -->
+<div id="healthPanel" style="
+  display:none; position:fixed; top:52px; right:8px; z-index:1500;
+  background:var(--panel); border:1px solid var(--border); border-radius:var(--radius);
+  padding:0.9rem 1.1rem; min-width:260px;
+  box-shadow:0 8px 32px rgba(0,0,0,0.5); font-size:0.78rem;">
+  <div style="font-weight:600;margin-bottom:0.6rem;color:var(--text);font-family:var(--font-head);">Veri Kaynakları</div>
+  <table id="healthTable" style="width:100%;border-collapse:collapse;"></table>
+  <div style="margin-top:0.75rem;font-size:0.65rem;color:var(--text-muted);">
+    🟢 &lt;10dk canlı &nbsp;|&nbsp; 🟡 &lt;60dk önbellekten &nbsp;|&nbsp; 🔴 eski/fallback
+  </div>
+</div>
+
+<!-- ═══ SIDEBAR ═══ -->
+<nav class="sidebar" id="sidebar">
+
+  <!-- ALM CORE -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>ALM Core</span></div>
+    <a href="/balance-sheet" class="nav-link" id="nav-bs">
+      <span class="nav-icon">📋</span><span class="nav-label">Balance Sheet</span><span class="nav-cmd">bs</span>
+    </a>
+    <a href="/nii-sensitivity"  class="nav-link" id="nav-nii">
+      <span class="nav-icon">📊</span><span class="nav-label">NII Sensitivity</span><span class="nav-cmd">nii</span>
+    </a>
+    <a href="/eve-duration-gap" class="nav-link" id="nav-eve">
+      <span class="nav-icon">⚡</span><span class="nav-label">EVE / Duration Gap</span><span class="nav-cmd">eve</span>
+    </a>
+    <a href="/fx-gap"           class="nav-link" id="nav-fx">
+      <span class="nav-icon">💱</span><span class="nav-label">FX Gap</span><span class="nav-cmd">fx</span>
+    </a>
+    <a href="/liquidity-ratios" class="nav-link" id="nav-liq">
+      <span class="nav-icon">💧</span><span class="nav-label">Liquidity (LCR/NSFR)</span><span class="nav-cmd">liq</span>
+    </a>
+    <a href="/ftp-curve"        class="nav-link" id="nav-ftp">
+      <span class="nav-icon">📈</span><span class="nav-label">FTP Curve</span><span class="nav-cmd">ftp</span>
+    </a>
+  </div>
+
+  <!-- RATES & PRICING -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Rates & Pricing</span></div>
+    <a href="/bond-pricer"     class="nav-link" id="nav-bond">
+      <span class="nav-icon">🔖</span><span class="nav-label">Bond Pricer</span><span class="nav-cmd">bond</span>
+    </a>
+    <a href="/oas-calculator"  class="nav-link" id="nav-oas">
+      <span class="nav-icon">🌳</span><span class="nav-label">OAS Calculator</span><span class="nav-cmd">oas</span>
+    </a>
+    <a href="/rate-delta"      class="nav-link" id="nav-rd">
+      <span class="nav-icon">🌡</span><span class="nav-label">Rate Delta</span><span class="nav-cmd">rd</span>
+    </a>
+    <a href="/yield-curve"     class="nav-link" id="nav-yc">
+      <span class="nav-icon">〰</span><span class="nav-label">Yield Curve</span><span class="nav-cmd">yc</span>
+    </a>
+    <a href="/arbitrage"       class="nav-link" id="nav-arb">
+      <span class="nav-icon">⚖️</span><span class="nav-label">Arbitrage</span><span class="nav-cmd">arb</span>
+    </a>
+  </div>
+
+  <!-- DECISION ENGINE -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Decision Engine</span></div>
+    <a href="/morning-brief"  class="nav-link" id="nav-brief">
+      <span class="nav-icon">🌅</span><span class="nav-label">Morning Brief</span><span class="nav-cmd">brief</span>
+    </a>
+    <a href="/hedge-engine"   class="nav-link" id="nav-hedge">
+      <span class="nav-icon">🛡</span><span class="nav-label">Hedge Engine</span><span class="nav-cmd">hedge</span>
+    </a>
+    <a href="/alco-memo"      class="nav-link" id="nav-alco">
+      <span class="nav-icon">📄</span><span class="nav-label">ALCO Memo</span><span class="nav-cmd">alco</span>
+    </a>
+    <a href="/scenarios"      class="nav-link" id="nav-scen">
+      <span class="nav-icon">📂</span><span class="nav-label">Scenarios</span><span class="nav-cmd">scen</span>
+    </a>
+    <a href="/alerts"         class="nav-link" id="nav-alt">
+      <span class="nav-icon">🔔</span><span class="nav-label">Alert System</span><span class="nav-cmd">alt</span>
+    </a>
+    <a href="/alm-advisor"    class="nav-link" id="nav-almadv">
+      <span class="nav-icon">🧠</span><span class="nav-label">ALM Aksiyon Motoru</span><span class="nav-cmd">adv</span>    </a>
+  </div>
+
+  <!-- TRADING DESK -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Trading Desk</span></div>
+    <a href="/trading-desk"     class="nav-link" id="nav-trade">
+      <span class="nav-icon">🖥</span><span class="nav-label">FX Trading Desk</span><span class="nav-cmd">trade</span>
+    </a>
+    <a href="/fx-options"        class="nav-link" id="nav-opt">
+      <span class="nav-icon">⚙️</span><span class="nav-label">FX Options</span><span class="nav-cmd">opt</span>    </a>
+    <a href="/nop-tracker"       class="nav-link" id="nav-nop">
+      <span class="nav-icon">🛑</span><span class="nav-label">BRSA NOP Tracker</span><span class="nav-cmd">nop</span>    </a>
+    <a href="/dealer-pnl"        class="nav-link" id="nav-pnl">
+      <span class="nav-icon">📈</span><span class="nav-label">Günlük P&L</span><span class="nav-cmd">pnl</span>    </a>
+    <a href="/rate-sheet"        class="nav-link" id="nav-rs">
+      <span class="nav-icon">📋</span><span class="nav-label">Kur Listesi</span><span class="nav-cmd">rs</span>    </a>
+    <a href="/eco-calendar"      class="nav-link" id="nav-cal">
+      <span class="nav-icon">📅</span><span class="nav-label">Ekonomi Takvimi</span><span class="nav-cmd">cal</span>    </a>
+    <a href="/risk-ladder"        class="nav-link" id="nav-rlad">
+      <span class="nav-icon">📐</span><span class="nav-label">DV01 Risk Merdiveni</span><span class="nav-cmd">rlad</span>    </a>
+    <a href="/carry-calc"         class="nav-link" id="nav-carry">
+      <span class="nav-icon">📉</span><span class="nav-label">Carry Hesaplayıcı</span><span class="nav-cmd">carry</span>    </a>
+    <a href="/portfolio-oas"      class="nav-link" id="nav-portf">
+      <span class="nav-icon">📊</span><span class="nav-label">Portföy Risk</span><span class="nav-cmd">portf</span>    </a>
+    <a href="/rv-matrix"          class="nav-link" id="nav-rvm">
+      <span class="nav-icon">🔢</span><span class="nav-label">RV Matrisi</span><span class="nav-cmd">rvm</span>    </a>
+    <a href="/carry-trade"        class="nav-link" id="nav-ctrade">
+      <span class="nav-icon">💹</span><span class="nav-label">Carry Trade P&L</span><span class="nav-cmd">ctrade</span>    </a>
+    <a href="/limit-dashboard"   class="nav-link" id="nav-lim">
+      <span class="nav-icon">🛡</span><span class="nav-label">Limit Paneli</span><span class="nav-cmd">lim</span>    </a>
+    <a href="/pnl-attribution"   class="nav-link" id="nav-pnlattr">
+      <span class="nav-icon">🔬</span><span class="nav-label">P&L Attribution</span><span class="nav-cmd">attr</span>    </a>
+    <a href="/stress-library"    class="nav-link" id="nav-stress">
+      <span class="nav-icon">⚡</span><span class="nav-label">Stres Kütüphanesi</span><span class="nav-cmd">stress</span>    </a>
+    <a href="/eod-brief"         class="nav-link" id="nav-eod">
+      <span class="nav-icon">🌙</span><span class="nav-label">Gün Sonu Brief</span><span class="nav-cmd">eod</span>    </a>
+    <a href="/pricing-simulator" class="nav-link" id="nav-price">
+      <span class="nav-icon">💰</span><span class="nav-label">Pricing Simulator</span><span class="nav-cmd">price</span>
+    </a>
+    <a href="/hedge-book"        class="nav-link" id="nav-hbook">
+      <span class="nav-icon">📒</span><span class="nav-label">Hedge Book</span><span class="nav-cmd">hbook</span>
+    </a>
+    <a href="/fx-ladder"         class="nav-link" id="nav-fxlad">
+      <span class="nav-icon">🪜</span><span class="nav-label">FX Liquidity Ladder</span><span class="nav-cmd">fxlad</span>
+    </a>
+  </div>
+
+  <!-- ANALYTICS -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Analytics</span></div>
+    <a href="/behavioral-modeling" class="nav-link" id="nav-beh">
+      <span class="nav-icon">🧠</span><span class="nav-label">Behavioral Model</span><span class="nav-cmd">beh</span>
+    </a>
+    <a href="/monte-carlo"         class="nav-link" id="nav-mc">
+      <span class="nav-icon">🎲</span><span class="nav-label">Monte Carlo</span><span class="nav-cmd">mc</span>
+    </a>
+    <a href="/risk-heatmap"        class="nav-link" id="nav-heat">
+      <span class="nav-icon">🌡️</span><span class="nav-label">Risk Heatmap</span><span class="nav-cmd">heat</span>
+    </a>
+    <a href="/funding-engine"      class="nav-link" id="nav-fund">
+      <span class="nav-icon">🏦</span><span class="nav-label">Funding Engine</span><span class="nav-cmd">fund</span>
+    </a>
+    <a href="/ftp-pricing"         class="nav-link" id="nav-ftpp">
+      <span class="nav-icon">🏷</span><span class="nav-label">FTP Pricing</span><span class="nav-cmd">ftpp</span>
+    </a>
+  </div>
+
+  <!-- Money Market -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Money Market</span></div>
+    <a href="/money-market" class="nav-link" id="nav-mm">
+      <span class="nav-icon">💵</span><span class="nav-label">Money Market Desk</span><span class="nav-cmd">mm</span>    </a>
+  </div>
+
+  <!-- Sprint 5 -->
+  <div class="nav-group">
+    <div class="nav-group-label"><span>Operational</span></div>
+    <a href="/import"     class="nav-link" id="nav-import">
+      <span class="nav-icon">📥</span><span class="nav-label">Data Import</span><span class="nav-cmd">imp</span>    </a>
+    <a href="/compare"    class="nav-link" id="nav-cmp">
+      <span class="nav-icon">⚖️</span><span class="nav-label">Scenario Compare</span><span class="nav-cmd">cmp</span>    </a>
+    <a href="/regulatory" class="nav-link" id="nav-reg">
+      <span class="nav-icon">📋</span><span class="nav-label">Regulatory Reports</span><span class="nav-cmd">reg</span>    </a>
+    <a href="/settings" class="nav-link" id="nav-settings">
+      <span class="nav-icon">⚙️</span><span class="nav-label">Ayarlar</span><span class="nav-cmd">cfg</span>
+    </a>
+  </div>
+
+  <!-- sidebar footer -->
+  <div class="sidebar-footer">
+    <div class="dot"></div>
+    <span>Bek Rate Desk v6.1</span>
+    <span style="margin-left:auto;opacity:0.5">port 5001</span>
+  </div>
+</nav>
+
+<!-- ═══ MAIN ═══ -->
+<div class="main" id="mainContent">
+  <div id="alertBanner" style="display:none;background:var(--red-dim);border-bottom:1px solid rgba(239,68,68,0.4);padding:0.45rem 1.75rem;font-size:0.68rem;color:var(--red);cursor:pointer" onclick="this.style.display='none'">
+    <strong>⚠ İzleme Listesi Uyarısı:</strong> <span id="alertBannerText"></span> — kapatmak için tıklayın
+  </div>
+  {% block content %}{% endblock %}
+</div>
+
+<!-- ═══ SHORTCUT PANEL ═══ -->
+<div id="shortcutToast">
+  <h4>⌨ Keyboard Shortcuts</h4>
+  <div class="sc-row"><span>Focus command bar</span><span class="sc-key">Alt + K</span></div>
+  <div class="sc-row"><span>Toggle sidebar</span><span class="sc-key">Alt + S</span></div>
+  <div class="sc-row"><span>Navigate to module</span><span class="sc-key">code + Enter</span></div>
+  <div class="sc-row"><span>Metodoloji paneli</span><span class="sc-key">M</span></div>
+  <hr style="border-color:var(--border-soft);margin:0.35rem 0"/>
+  <div style="font-size:0.58rem;color:var(--text-muted);margin-bottom:0.25rem;text-transform:uppercase;letter-spacing:0.08em">Module Shortcuts</div>
+  <div class="sc-row"><span>FX Trading Desk</span><span class="sc-key">trade</span></div>
+  <div class="sc-row"><span>FX Options</span><span class="sc-key">opt</span></div>
+  <div class="sc-row"><span>BRSA NOP Tracker</span><span class="sc-key">nop</span></div>
+  <div class="sc-row"><span>Daily P&L</span><span class="sc-key">pnl</span></div>
+  <div class="sc-row"><span>Rate Sheet</span><span class="sc-key">rs</span></div>
+  <div class="sc-row"><span>Economic Calendar</span><span class="sc-key">cal</span></div>
+  <div class="sc-row"><span>Money Market Desk</span><span class="sc-key">mm</span></div>
+  <div class="sc-row"><span>Morning Brief</span><span class="sc-key">brief</span></div>
+  <div class="sc-row"><span>ALCO Memo</span><span class="sc-key">alco</span></div>
+  <div class="sc-row"><span>NII Sensitivity</span><span class="sc-key">nii</span></div>
+  <div class="sc-row"><span>Hedge Engine</span><span class="sc-key">hedge</span></div>
+  <div class="sc-row"><span>DV01 Risk Merdiveni</span><span class="sc-key">rlad</span></div>
+  <div class="sc-row"><span>Carry Hesaplayıcı</span><span class="sc-key">carry</span></div>
+  <div class="sc-row"><span>Portföy Risk</span><span class="sc-key">portf</span></div>
+  <div class="sc-row"><span>RV Matrisi</span><span class="sc-key">rvm</span></div>
+  <div class="sc-row"><span>Carry Trade P&L</span><span class="sc-key">ctrade</span></div>
+  <div class="sc-row"><span>Limit Paneli</span><span class="sc-key">lim</span></div>
+  <div class="sc-row"><span>P&L Attribution</span><span class="sc-key">attr</span></div>
+  <div class="sc-row"><span>Stres Kütüphanesi</span><span class="sc-key">stress</span></div>
+  <div class="sc-row"><span>Gün Sonu Brief</span><span class="sc-key">eod</span></div>
+  <div class="sc-row"><span>Go Home</span><span class="sc-key">home</span></div>
+  <div style="margin-top:0.5rem;opacity:0.5;font-size:0.6rem">Press ? or click ⌨ to close · opt nop pnl rs cal trade mm brief alco hedge nii eve fx liq ftp bond oas rd yc arb beh mc alt fund ftpp heat scen price hbook fxlad imp cmp reg rlad carry portf rvm ctrade</div>
+</div>
+
+<!-- ═══ METODOLOJİ MODALI ═══ -->
+<div id="metodolojiOverlay" style="display:none;position:fixed;inset:0;background:rgba(8,9,13,.72);z-index:2000;backdrop-filter:blur(3px)" onclick="closeMetodoloji()"></div>
+<div id="metodolojiPanel" style="display:none;position:fixed;top:0;right:0;height:100vh;width:min(480px,95vw);background:var(--surface);border-left:1px solid var(--border);z-index:2001;overflow-y:auto;padding:1.6rem 1.8rem;box-sizing:border-box;font-family:'DM Mono',monospace">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.2rem">
+    <div>
+      <div style="font-size:0.6rem;text-transform:uppercase;letter-spacing:0.12em;color:var(--accent);margin-bottom:0.2rem">Metodoloji</div>
+      <div id="metTitle" style="font-size:1.05rem;font-weight:700;color:var(--text-primary);font-family:'Syne',sans-serif"></div>
+    </div>
+    <button onclick="closeMetodoloji()" style="background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:1.2rem;padding:0.3rem;line-height:1">✕</button>
+  </div>
+  <div id="metOzet" style="font-size:0.72rem;color:var(--text-muted);line-height:1.6;margin-bottom:1.2rem;padding:0.75rem;background:var(--panel);border-radius:6px;border-left:3px solid var(--accent)"></div>
+  <div id="metFormullerWrap" style="margin-bottom:1.2rem">
+    <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:0.5rem">Temel Formüller</div>
+    <div id="metFormuller"></div>
+  </div>
+  <div id="metVeriWrap" style="margin-bottom:1.2rem">
+    <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:0.5rem">Veri Kaynakları</div>
+    <div id="metVeri" style="font-size:0.7rem;color:var(--text-secondary);line-height:1.8"></div>
+  </div>
+  <div id="metNotlarWrap" style="display:none;margin-bottom:1rem">
+    <div style="font-size:0.58rem;text-transform:uppercase;letter-spacing:0.1em;color:var(--text-muted);margin-bottom:0.5rem">Notlar</div>
+    <div id="metNotlar" style="font-size:0.68rem;color:var(--text-muted);line-height:1.6"></div>
+  </div>
+  <div style="margin-top:1.5rem;padding-top:0.8rem;border-top:1px solid var(--border);font-size:0.6rem;color:var(--text-muted);display:flex;align-items:center;gap:0.5rem">
+    <kbd style="background:var(--panel);border:1px solid var(--border);border-radius:3px;padding:1px 6px;font-size:0.58rem">M</kbd>
+    <span>kapatmak için tekrar bas · veya ESC</span>
+  </div>
+</div>
+
+<!-- ═══ ACTIVE NAV HIGHLIGHT ═══ -->
+<script>
+  const NAV_MAP = {
+    '/nii-sensitivity':'nav-nii','/eve-duration-gap':'nav-eve','/fx-gap':'nav-fx',
+    '/liquidity-ratios':'nav-liq','/ftp-curve':'nav-ftp','/bond-pricer':'nav-bond',
+    '/oas-calculator':'nav-oas','/rate-delta':'nav-rd','/yield-curve':'nav-yc',
+    '/arbitrage':'nav-arb','/behavioral-modeling':'nav-beh','/monte-carlo':'nav-mc',
+    '/alerts':'nav-alt','/funding-engine':'nav-fund','/ftp-pricing':'nav-ftpp',
+    '/risk-heatmap':'nav-heat','/morning-brief':'nav-brief','/hedge-engine':'nav-hedge',
+    '/alco-memo':'nav-alco','/scenarios':'nav-scen','/pricing-simulator':'nav-price',
+    '/fx-ladder':'nav-fxlad','/hedge-book':'nav-hbook',
+    '/balance-sheet':'nav-bs','/import':'nav-import','/compare':'nav-cmp','/regulatory':'nav-reg','/settings':'nav-settings',
+    '/trading-desk':'nav-trade','/money-market':'nav-mm',
+    '/fx-options':'nav-opt','/nop-tracker':'nav-nop','/dealer-pnl':'nav-pnl',
+    '/rate-sheet':'nav-rs','/eco-calendar':'nav-cal','/alm-advisor':'nav-almadv',
+    '/risk-ladder':'nav-rlad','/carry-calc':'nav-carry','/portfolio-oas':'nav-portf','/rv-matrix':'nav-rvm','/carry-trade':'nav-ctrade',
+    '/limit-dashboard':'nav-lim','/pnl-attribution':'nav-pnlattr','/stress-library':'nav-stress','/eod-brief':'nav-eod',
+  };
+  const activeId = NAV_MAP[window.location.pathname];
+  if (activeId) document.getElementById(activeId)?.classList.add('active');
+</script>
+
+<!-- ═══ CMD NAVIGATION ═══ -->
+<script>
+  const ROUTES = {
+    'nii':'/nii-sensitivity','eve':'/eve-duration-gap','fx':'/fx-gap',
+    'liq':'/liquidity-ratios','ftp':'/ftp-curve','bond':'/bond-pricer',
+    'oas':'/oas-calculator','rd':'/rate-delta','yc':'/yield-curve',
+    'arb':'/arbitrage','beh':'/behavioral-modeling','mc':'/monte-carlo',
+    'alt':'/alerts','fund':'/funding-engine','ftpp':'/ftp-pricing',
+    'heat':'/risk-heatmap','brief':'/morning-brief','hedge':'/hedge-engine',
+    'alco':'/alco-memo','scen':'/scenarios','price':'/pricing-simulator',
+    'fxlad':'/fx-ladder','hbook':'/hedge-book',
+    'bs':'/balance-sheet','imp':'/import','cmp':'/compare','reg':'/regulatory','cfg':'/settings','home':'/',
+    'trade':'/trading-desk','mm':'/money-market',
+    'opt':'/fx-options','nop':'/nop-tracker','pnl':'/dealer-pnl',
+    'rs':'/rate-sheet','cal':'/eco-calendar','adv':'/alm-advisor',
+    'rlad':'/risk-ladder','carry':'/carry-calc','portf':'/portfolio-oas','rvm':'/rv-matrix','ctrade':'/carry-trade',
+    'lim':'/limit-dashboard','attr':'/pnl-attribution','stress':'/stress-library','eod':'/eod-brief',
+  };
+
+  document.getElementById('cmdInput').addEventListener('keydown', function(e){
+    if (e.key !== 'Enter') return;
+    const cmd = this.value.trim().toLowerCase();
+    if (!cmd) return;
+    if (ROUTES[cmd]) { window.location = ROUTES[cmd]; return; }
+    for (const [key, route] of Object.entries(ROUTES)){
+      if (cmd.includes(key)) { window.location = route; return; }
+    }
+    this.style.borderColor = 'var(--red)';
+    setTimeout(() => this.style.borderColor = '', 700);
+  });
+
+  // Keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    if (e.altKey && e.key === 's') { e.preventDefault(); toggleSidebar(); }
+    if (e.altKey && e.key === 'k') { e.preventDefault(); document.getElementById('cmdInput').focus(); }
+    const tag = document.activeElement.tagName;
+    if (['INPUT','TEXTAREA'].includes(tag)) return;
+    if (e.key === '?') { toggleShortcuts(); }
+    if (e.key === 'm' || e.key === 'M') { toggleMetodoloji(); }
+    if (e.key === 'Escape') { closeMetodoloji(); }
+  });
+</script>
+
+<!-- ═══ SIDEBAR TOGGLE ═══ -->
+<script>
+  let sidebarOpen = true;
+
+  function toggleSidebar() {
+    sidebarOpen = !sidebarOpen;
+    const sidebar = document.getElementById('sidebar');
+    const main    = document.getElementById('mainContent');
+    const toast   = document.getElementById('shortcutToast');
+    sidebar.classList.toggle('collapsed', !sidebarOpen);
+    main.classList.toggle('expanded', !sidebarOpen);
+    if (toast) toast.style.left = sidebarOpen
+      ? 'calc(var(--sidebar-w) + 1.5rem)'
+      : '1.5rem';
+  }
+
+  function toggleShortcuts() {
+    const t = document.getElementById('shortcutToast');
+    t.classList.toggle('show');
+  }
+  document.addEventListener('click', e => {
+    const t = document.getElementById('shortcutToast');
+    if (t.classList.contains('show') && !t.contains(e.target) &&
+        !e.target.closest('button[onclick="toggleShortcuts()"]')) {
+      t.classList.remove('show');
+    }
+  });
+</script>
+
+<!-- ═══ LIVE CLOCK ═══ -->
+<script>
+  function updateClock() {
+    const now = new Date();
+    const pad = n => String(n).padStart(2,'0');
+    document.getElementById('liveClock').textContent =
+      `${now.toLocaleDateString('tr-TR',{weekday:'short'})} ${pad(now.getDate())}.${pad(now.getMonth()+1)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+  }
+  updateClock();
+  setInterval(updateClock, 1000);
+</script>
+
+<!-- ═══ DATA HEALTH STRIP ═══ -->
+<script>
+(function() {
+  const SOURCES = ['FRED','TCMB_XML','TCMB_policy','EVDS','yfinance'];
+  const LABELS  = {FRED:'FRED',TCMB_XML:'TCMB FX',TCMB_policy:'TCMB Faiz',EVDS:'EVDS',yfinance:'yfinance'};
+  let _panelOpen = false;
+
+  function renderStrip(health) {
+    const strip = document.getElementById('dataHealthStrip');
+    if (!strip) return;
+    strip.innerHTML = SOURCES.map(s => {
+      const h = health[s] || {};
+      const badge = h.badge || '⚪';
+      return `<span style="font-size:0.75rem;cursor:pointer;" title="${LABELS[s]}: ${h.label||'?'}">${badge}</span>`;
+    }).join('');
+  }
+
+  function renderTable(health) {
+    const tbl = document.getElementById('healthTable');
+    if (!tbl) return;
+    tbl.innerHTML = SOURCES.map(s => {
+      const h = health[s] || {};
+      const age = h.age_s != null ? (h.age_s < 60 ? h.age_s + 's' : Math.round(h.age_s/60) + 'dk') : '—';
+      return `<tr>
+        <td style="padding:0.25rem 0;color:var(--text-muted);width:100px">${LABELS[s]}</td>
+        <td style="padding:0.25rem 0.5rem">${h.badge || '⚪'}</td>
+        <td style="padding:0.25rem 0;color:var(--text)">${h.label || '?'}</td>
+        <td style="padding:0.25rem 0 0.25rem 0.5rem;color:var(--text-muted);font-size:0.65rem;text-align:right">${age}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  window.toggleHealthPanel = function() {
+    const panel = document.getElementById('healthPanel');
+    if (!panel) return;
+    _panelOpen = !_panelOpen;
+    panel.style.display = _panelOpen ? 'block' : 'none';
+  };
+
+  document.addEventListener('click', e => {
+    const panel = document.getElementById('healthPanel');
+    const strip = document.getElementById('dataHealthStrip');
+    if (panel && _panelOpen && !panel.contains(e.target) && !strip.contains(e.target)) {
+      _panelOpen = false;
+      panel.style.display = 'none';
+    }
+  });
+
+  function pollHealth() {
+    fetch('/api/data-health')
+      .then(r => r.json())
+      .then(data => { renderStrip(data); renderTable(data); })
+      .catch(() => {});
+  }
+
+  pollHealth();
+  setInterval(pollHealth, 60000);   // refresh every 60s
+})();
+</script>
+
+<!-- ═══ WATCHLIST POLLING ═══ -->
+<script>
+  let watchlistInterval = null;
+  const WATCHLIST_INITIAL_DELAY = 30000;
+  const WATCHLIST_POLL_INTERVAL = 120000;
+
+  function checkWatchlist() {
+    fetch('/api/watchlist')
+      .then(r => r.json())
+      .then(items => {
+        fetch('/api/watchlist/check', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(items),
+        })
+          .then(r => r.json())
+          .then(checked => {
+            const triggered = checked.filter(item => item.triggered);
+            if (triggered.length > 0) {
+              const messages = triggered.map(item => `${item.name}: ${item.current_value || '—'} (${item.trigger_dir === 'yukarı' ? '↑' : '↓'})`).join(' · ');
+              document.getElementById('alertBannerText').textContent = messages;
+              document.getElementById('alertBanner').style.display = 'block';
+            }
+          })
+          .catch(e => console.error('Watchlist check error:', e));
+      })
+      .catch(e => console.error('Watchlist load error:', e));
+  }
+
+  function startWatchlistPolling() {
+    setTimeout(() => {
+      checkWatchlist();
+      watchlistInterval = setInterval(checkWatchlist, WATCHLIST_POLL_INTERVAL);
+    }, WATCHLIST_INITIAL_DELAY);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startWatchlistPolling);
+  } else {
+    startWatchlistPolling();
+  }
+</script>
+
+<!-- ═══ METODOLOJİ MOTORU ═══ -->
+<script>
+const METHODOLOGY_DB = {
+  '/nii-sensitivity': {
+    title: 'NII Duyarlılığı',
+    ozet: 'Faiz oranlarındaki paralel kaymaların 12 aylık Net Faiz Geliri\'ne (NII) olan etkisini ölçer. Faize yeniden fiyatlanan varlık ve yükümlülüklerin gap\'i üzerinden hesaplanır.',
+    formulas: [
+      { label: 'Faiz Gap',      f: 'Gap = RSA − RSL' },
+      { label: 'ΔNII',          f: 'ΔNII = Gap × Δr × Zaman_Dilimi' },
+      { label: 'Kümülatif NII', f: 'NII_kümülatif = Σ (Dönemsel Gap_t × Δr)' },
+    ],
+    veri: ['TCMB politika faizi (FRED/manuel)', 'Bilanço vade dağılımı (manuel giriş)', 'ABD hazine eğrisi (FRED DGS serisi)'],
+    notlar: 'RSA = Rate-Sensitive Assets (faize duyarlı varlıklar); RSL = Rate-Sensitive Liabilities. Hesap: fiyatlama dönemine kalan süre içinde yeniden fiyatlanacak kalemler dahil edilir.',
+  },
+  '/eve-duration-gap': {
+    title: 'EVE / Duration Gap',
+    ozet: 'Varlık ve yükümlülüklerin piyasa değerinin faize duyarlılığını ölçer. Paralel oran kaymalarında bilanço Ekonomik Değeri\'nin (EVE) nasıl değiştiğini gösterir.',
+    formulas: [
+      { label: 'DV01 (birim)',  f: 'DV01 = ModD × PV × 0.0001' },
+      { label: 'Net DV01',      f: 'Net DV01 = Σ(Varlık DV01) − Σ(Yük. DV01)' },
+      { label: 'ΔEVE',          f: 'ΔEVE ≈ Net DV01 × Δr (bps)' },
+      { label: 'Mod. Duration', f: 'ModD = MacD / (1 + ytm/freq)' },
+      { label: 'Mac. Duration', f: 'MacD = Σ [t × CF / (1+r)^t] / P' },
+    ],
+    veri: ['FRED ABD hazine eğrisi (DGS serisi)', 'Manuel bilanço kalemleri (anapara, kupon, vade)', 'price_bond_full() → YTM ve ModD hesabı'],
+    notlar: 'Varlık DV01 negatif işaret taşır (uzun pozisyon). Net DV01 < 0 → varlık duyarlı banka. BDDK beklentisi: ±200bps şokunda EVE etkisi < %20 Tier-1.',
+  },
+  '/fx-gap': {
+    title: 'FX Pozisyon & Gap',
+    ozet: 'Döviz bazında açık/kapalı pozisyon analizi. Kur değişiminin bilanço net değerine ve P&L\'ye etkisini döviz türü bazında raporlar.',
+    formulas: [
+      { label: 'FX Pozisyon',   f: 'Net Pos = FX Varlıklar − FX Yükümlülükler' },
+      { label: 'P&L Etkisi',    f: 'ΔP&L = Net Pos (döviz) × Δkur (TRY/döviz)' },
+      { label: 'NOP (TRY)',     f: 'NOP = Σ |Net Pos_i × Kur_i|' },
+    ],
+    veri: ['Canlı döviz kurları (yfinance / TCMB)', 'Manuel FX bilanço girişi (USD, EUR, GBP, JPY…)'],
+  },
+  '/liquidity-ratios': {
+    title: 'Likidite Oranları',
+    ozet: 'BDDK düzenlemelerine uygun LCR ve NSFR hesaplamaları. Stres altında 30 günlük nakit çıkışını karşılama ve uzun vadeli istikrarlı fonlama yeterliliği.',
+    formulas: [
+      { label: 'LCR',  f: 'LCR = HQLA / Net Nakit Çıkışı (30g) ≥ %100' },
+      { label: 'NSFR', f: 'NSFR = Mevcut İstikrarlı Fonlama / Gerekli İstikrarlı Fonlama ≥ %100' },
+    ],
+    veri: ['Manuel bilanço ve likidite tamponu girişi', 'BDDK eşik değerleri ve ağırlık tabloları (Basel III)'],
+  },
+  '/ftp-curve': {
+    title: 'FTP Eğrisi',
+    ozet: 'Fonlama Transfer Fiyatı eğrisi. Her vade dilimine atanan iç maliyet ile kredi ve likidite primini ayrıştırır; birim faiz marjını belirler.',
+    formulas: [
+      { label: 'FTP(t)',      f: 'FTP(t) = Hazine(t) + Kredi_Spread(t) + Likidite_Primi(t)' },
+      { label: 'Faiz Marjı', f: 'Marj = Kredi Faizi − FTP(t)' },
+    ],
+    veri: ['FRED DGS hazine eğrisi (tüm vadeler)', 'BAML OAS kredi spread serileri (BAMLC0A4CBBBSW vb.)', 'Likidite primi: kullanıcı tarafından ayarlanabilir'],
+  },
+  '/bond-pricer': {
+    title: 'Tahvil Pricer',
+    ozet: 'Standart DCF yöntemiyle sabit, değişken ve amortize tahvil fiyatlaması. YTM, modifiye ve Macaulay duration, DV01 ve konveksite hesaplar.',
+    formulas: [
+      { label: 'Fiyat',        f: 'P = Σ C/(1+r)^t + Par/(1+r)^n' },
+      { label: 'YTM',          f: 'YTM: P − Σ CF/(1+ytm/freq)^t = 0  [brentq]' },
+      { label: 'ModD',         f: 'ModD = MacD / (1 + ytm/freq)' },
+      { label: 'DV01',         f: 'DV01 = [P(ytm−1bp) − P(ytm+1bp)] / 2' },
+      { label: 'Konveksite',   f: 'Cvx = Σ t(t+dt)·CF/(1+r)^t / [P·(1+r)²]' },
+    ],
+    veri: ['Kullanıcı girdisi: kupon%, vade, piyasa fiyatı, frekans', 'Değişken tahvil: baz oran + spread formulasyonu'],
+    notlar: 'Amortize tahvil: sabit ödeme = Par × r / [1−(1+r)^−n]. Tüm YTM çözümleri SciPy brentq ile [-50%, +500%] aralığında aranır.',
+  },
+  '/oas-calculator': {
+    title: 'OAS Hesaplayıcı',
+    ozet: 'Hull-White tarzı yeniden birleşen ikili kısa-oran kafesi ile çağrılabilir tahvil ve imtiyazlı hisse OAS hesabı. Opsiyon maliyeti ve çağrı olasılığı çıkarır.',
+    formulas: [
+      { label: 'Kısa-oran kafesi', f: 'r(i,j) = r₀ · u^(2j−i),  u = e^(σ√Δt)' },
+      { label: 'OAS çözümü',       f: 'P_piyasa = P_callable(OAS)  [brentq]' },
+      { label: 'Opsiyon maliyeti', f: 'Opt.Cost = P_noncallable − P_callable @ OAS=0' },
+      { label: 'Çağrı olasılığı',  f: 'P(çağrı) = Σ w_j [kupon > 1.05×r(i,j)] / Σ w_j' },
+      { label: 'Z-spread',         f: 'Z-Spread = OAS + Kredi_Spread_rating' },
+    ],
+    veri: ['FRED DGS 1MO→30Y hazine eğrisi', 'FRED BAML OAS serileri (AAA→CCC rating eşleşmesi)', 'FRED MOVE endeksi → σ = MOVE/100/√12'],
+    notlar: '175bps imtiyazlı hisse primi (PREFERRED_PREMIUM) sabit tanımlıdır. Kafes: 40 adım, dt = call_years/40. r₀: cari YTM eğrisinden interpolasyon.',
+  },
+  '/rate-delta': {
+    title: 'Rate Delta (DV01)',
+    ozet: 'Banka bilançosunun toplam faiz oranı duyarlılığını (delta) vade dilimlerine göre analiz eder.',
+    formulas: [
+      { label: 'DV01 birim',  f: 'DV01 = ModD × PV × 0.0001' },
+      { label: 'Delta hedge', f: 'Hedge Miktarı = DV01_portföy / DV01_araç' },
+    ],
+    veri: ['Bilanço kalemleri (manuel giriş)', 'price_bond_full() ile anlık yeniden fiyatlama'],
+  },
+  '/yield-curve': {
+    title: 'Getiri Eğrisi',
+    ozet: 'Canlı ABD ve TR getiri eğrilerini görselleştirir. Eğim (2-10Y spread), kamel sırtı ve enversiyon sinyallerini otomatik tespit eder.',
+    formulas: [
+      { label: 'Eğim',       f: '2-10Y Spread = Getiri(10Y) − Getiri(2Y)' },
+      { label: 'Kamel sırtı',f: 'Kamel = Getiri(5Y) − [Getiri(2Y) + Getiri(10Y)] / 2' },
+      { label: 'Enversiyon', f: 'Enversiyon sinyali: 2Y > 10Y' },
+    ],
+    veri: ['FRED DGS serileri: 1MO, 3MO, 6MO, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y', 'TCMB / TR hazine eğrisi: TCMB API veya manuel giriş'],
+  },
+  '/arbitrage': {
+    title: 'Arbitraj Motoru',
+    ozet: 'Kapalı faiz paritesi (CIP) çerçevesinde kur ve faiz dengesizliklerinden kaynaklanacak teorik arbitraj karını hesaplar.',
+    formulas: [
+      { label: 'KFP Forward',    f: 'F = S × (1 + r_TRY×T) / (1 + r_USD×T)' },
+      { label: 'Arbitraj karı',  f: 'ΔArbitraj = F_piyasa − F_teorik' },
+      { label: 'Carry (hedge)',  f: 'Carry = (r_TRY − r_USD) − (F−S)/S/T' },
+    ],
+    veri: ['FRED ABD kısa vadeli hazine oranları', 'TCMB politika faizi', 'yfinance USDTRY/EURTRY spot kurları'],
+  },
+  '/behavioral-modeling': {
+    title: 'Davranışsal Modelleme',
+    ozet: 'Vadesiz mevduatın davranışsal vade profilini ve beta faktörünü hesaplar. Faiz duyarlı olmayan çekirdek mevduatı modelleştirir.',
+    formulas: [
+      { label: 'Efektif vade',  f: 'D_eff = Σ t × CF_t / Σ CF_t' },
+      { label: 'Beta',          f: 'β = ΔMevduat faizi / ΔPolitika faizi' },
+      { label: 'Çekirdek pay', f: 'Çekirdek% = 1 − Volatil mevduat / Toplam' },
+    ],
+    veri: ['TCMB politika faizi serisi (geçmiş)', 'Manuel mevduat vade ve tutar girişi'],
+  },
+  '/monte-carlo': {
+    title: 'Monte Carlo Simülasyonu',
+    ozet: 'Faiz (Vasicek) ve FX (GBM) için binlerce yol simüle ederek portföy VaR ve CVaR dağılımını üretir.',
+    formulas: [
+      { label: 'Vasicek (faiz)', f: 'dr = κ(θ − r)dt + σdW' },
+      { label: 'GBM (FX)',       f: 'dS = μS·dt + σS·dW' },
+      { label: 'VaR',            f: 'VaR_α = quantile(P&L, 1 − α)' },
+      { label: 'CVaR',           f: 'CVaR = E[P&L | P&L < VaR]' },
+    ],
+    veri: ['FRED geçmiş faiz verileri (Vasicek kalibrasyon)', 'yfinance geçmiş FX verileri (μ, σ tahmini)', 'Simülasyon adımı: kullanıcı ayarlı (ör. 1000 yol × 252 gün)'],
+  },
+  '/risk-heatmap': {
+    title: 'Risk Isı Haritası',
+    ozet: 'Bilanço kalemlerinin faiz ve FX riskine olan iki boyutlu duyarlılık matrisi. Hangi pozisyonun hangi risk faktörüne en çok maruz kaldığını özetler.',
+    formulas: [
+      { label: 'Faiz etkisi', f: 'ΔP = DV01 × Δr (bps)' },
+      { label: 'FX etkisi',   f: 'ΔP = Net Pos × Δkur' },
+    ],
+    veri: ['Alt modüller: NII, EVE, FX Gap, LCR çıktıları', 'FRED ve yfinance canlı veri beslemeleri'],
+  },
+  '/morning-brief': {
+    title: 'Sabah Brief',
+    ozet: 'Her gün otomatik olarak hazırlanan piyasa özeti. Canlı faiz, FX, spread ve volatilite verilerini içeren yorumlu rapor.',
+    formulas: [
+      { label: 'MOVE vol',    f: 'σ_faiz = MOVE / 100 / √12  (aylık vol)' },
+      { label: '2-10Y Eğim', f: 'Eğim = UST_10Y − UST_2Y' },
+    ],
+    veri: ['FRED: DGS2, DGS10, BAMLMOVE, BAML OAS spreads', 'TCMB: politika faizi, USDTRY', 'yfinance: hisse endeksleri, emtia spot fiyatları'],
+  },
+  '/alco-memo': {
+    title: 'ALCO Memo',
+    ozet: 'Aktif-Pasif Komitesi için otomatik bilanço ve risk özet memorandum üreticisi. Tüm modül çıktılarını tek belgede birleştirir.',
+    formulas: [],
+    veri: ['NII, EVE, LCR, FTP, FX Gap modüllerinin çıktıları', 'Kullanıcı yorumları ve yönetim özeti'],
+  },
+  '/hedge-engine': {
+    title: 'Hedge Motoru',
+    ozet: 'DV01 hedefine göre IRS veya tahvil hedge miktarını hesaplar. Pay-fixed IRS ile duration kısaltma, receive-fixed ile uzatma stratejilerini modelleştirir.',
+    formulas: [
+      { label: 'Hedge miktarı', f: 'N_hedge = Net DV01_portföy / DV01_araç' },
+      { label: 'IRS DV01',      f: 'DV01_IRS = −DV01_sabit + DV01_değişken' },
+      { label: 'Hedef DV01',    f: 'DV01_hedef = Net DV01 + N × DV01_araç' },
+    ],
+    veri: ['Portföy DV01 (EVE/rate-delta modülünden)', 'Kullanıcı: araç tipi, nominal, vade, kupon', 'FRED: referans faiz oranı'],
+  },
+  '/scenarios': {
+    title: 'Senaryo Analizi',
+    ozet: 'Birden fazla paralel ve şekil-kayması faiz senaryosu altında NII, EVE ve FX P&L\'nin eş zamanlı hesabı.',
+    formulas: [
+      { label: 'Şok NII',  f: 'ΔNII(s) = Gap × Δr_s × T' },
+      { label: 'Şok EVE',  f: 'ΔEVE(s) = Net DV01 × Δr_s' },
+    ],
+    veri: ['Tüm alt modüllerin senaryo parametreleri', 'FRED ve TCMB tarihsel şok gözlemleri'],
+  },
+  '/pricing-simulator': {
+    title: 'Fiyatlama Simülatörü',
+    ozet: 'Sabit, değişken ve amortize enstrümanlar için gelişmiş fiyat/getiri/duration hesaplama simülatörü.',
+    formulas: [
+      { label: 'DCF',   f: 'P = Σ CF_t / (1 + ytm/freq)^t' },
+      { label: 'DV01',  f: 'DV01 = [P(r−1bp) − P(r+1bp)] / 2' },
+    ],
+    veri: ['Kullanıcı girdisi: nakit akış takvimi, piyasa fiyatı veya YTM', 'FRED referans eğrisi (isteğe bağlı)'],
+  },
+  '/trading-desk': {
+    title: 'FX Trading Desk',
+    ozet: 'Canlı döviz kuru izleme, spot pozisyon takibi ve anlık P&L hesaplama. Kur alarm sistemi entegre.',
+    formulas: [
+      { label: 'Anlık P&L', f: 'P&L = Pos (döviz) × (Kur_canlı − Maliyet_kur)' },
+      { label: 'NOP (TRY)', f: 'NOP = Σ |Pos_i (döviz)| × Kur_i' },
+    ],
+    veri: ['yfinance: USDTRY=X, EURTRY=X, GBPTRY=X, JPYTRY=X', 'TCMB döviz kur tablosu (yedek kaynak)', 'Kullanıcı pozisyon ve maliyet kur girişi'],
+  },
+  '/money-market': {
+    title: 'Para Piyasası Masası',
+    ozet: 'Repo, ters repo ve interbank borçlanma işlem takibi. Faiz ve efektif yıllık getiri hesabı.',
+    formulas: [
+      { label: 'Dönem faizi', f: 'Faiz = Anapara × Oran × Gün / 365' },
+      { label: 'Efektif yıllık', f: 'EAY = (1 + r/n)^n − 1' },
+      { label: 'Repo fiyat',     f: 'P_geri = P_alış × (1 + repo_oranı × gün/365)' },
+    ],
+    veri: ['TCMB politika faizi (gecelik borç verme / alma)', 'BIST repo referans oranı', 'Kullanıcı işlem girişi'],
+  },
+  '/fx-options': {
+    title: 'FX Opsiyonları',
+    ozet: 'Garman-Kohlhagen (Black-Scholes FX versiyonu) modeli ile döviz opsiyon fiyatlaması ve Yunan harfleri.',
+    formulas: [
+      { label: 'GK Call', f: 'C = S·e^(−qT)·N(d₁) − K·e^(−rT)·N(d₂)' },
+      { label: 'd₁',      f: 'd₁ = [ln(S/K) + (r−q+σ²/2)T] / (σ√T)' },
+      { label: 'd₂',      f: 'd₂ = d₁ − σ√T' },
+      { label: 'Delta',   f: 'Δ = e^(−qT)·N(d₁)  (call)' },
+      { label: 'Vega',    f: 'ν = S·e^(−qT)·N\'(d₁)·√T' },
+    ],
+    veri: ['yfinance: spot FX kurları (S)', 'FRED: USD risksiz faiz (r)', 'TCMB: TRY faizi → q (yabancı faiz)', 'Kullanıcı: strike (K), vade (T), volatilite (σ)'],
+  },
+  '/nop-tracker': {
+    title: 'BRSA NOP Tracker',
+    ozet: 'BDDK YMK limitine göre günlük Net Opsiyon Pozisyonu (NOP) takibi ve limit kullanım oranı.',
+    formulas: [
+      { label: 'NOP',             f: 'NOP = |Σ Uzun − Kısa Pozisyon| (TRY karşılığı)' },
+      { label: 'Limit kullanımı', f: 'Kullanım% = NOP / (Özkaynak × %20) × 100' },
+    ],
+    veri: ['Canlı döviz kurları (yfinance / TCMB)', 'Kullanıcı pozisyon girişi', 'Özkaynak parametresi (kullanıcı tanımlı)'],
+    notlar: 'BDDK limiti: NOP ≤ özkaynak × %20. Aşım durumunda kırmızı alarm tetiklenir.',
+  },
+  '/dealer-pnl': {
+    title: 'Günlük P&L',
+    ozet: 'Dealer masa bazında gerçekleşen ve potansiyel P&L takibi. Enstrüman bazında kümülatif getiri raporlaması.',
+    formulas: [
+      { label: 'Gerçekleşen', f: 'Realized P&L = Σ (Satış_fiyat − Alış_fiyat) × Miktar' },
+      { label: 'MTM P&L',     f: 'MTM P&L = (Canlı_fiyat − Alış_fiyat) × Açık_pozisyon' },
+    ],
+    veri: ['Kullanıcı işlem girişi', 'Canlı piyasa fiyatları (yfinance / TCMB)'],
+  },
+  '/rate-sheet': {
+    title: 'Kur Listesi',
+    ozet: 'Anlık piyasa döviz kurları, faiz oranları ve emtia fiyatları özet tablosu.',
+    formulas: [],
+    veri: ['yfinance: USDTRY, EURTRY, GBPTRY, altın, petrol', 'FRED: ABD hazine oranları', 'TCMB: politika ve gösterge faiz'],
+  },
+  '/eco-calendar': {
+    title: 'Ekonomi Takvimi',
+    ozet: 'TR ve küresel önemli ekonomik veri açıklama takvimi; piyasa beklenti ve gerçekleşme takibi.',
+    formulas: [],
+    veri: ['Kullanıcı tanımlı takvim girişleri', 'TCMB ve TÜİK takvimi (referans)'],
+  },
+  '/alm-advisor': {
+    title: 'ALM Aksiyon Motoru',
+    ozet: 'Net DV01 üzerinden altı BCBS faiz şok senaryosu ile bilanço EVE stres testi ve otomatik hedge tavsiye sistemi.',
+    formulas: [
+      { label: 'ΔEVE (senaryo)', f: 'ΔEVE ≈ Net_DV01 × Δr_senaryo (bps)' },
+      { label: 'Senaryolar',     f: '+200bps · −200bps · Ayı-dikleşme · Boğa-düzleşme · Ayı-düzleşme · Boğa-dikleşme' },
+      { label: 'Pay Fixed IRS',  f: 'ΔEVE_hedge = −N × ModD_sabit × PV_sabit × 0.0001' },
+    ],
+    veri: ['Net DV01 (manuel veya EVE modülünden)', 'FRED DGS hazine eğrisi', 'FRED MOVE endeksi → σ faiz volatilitesi'],
+    notlar: 'BCBS IRRBB standart şokları kullanılır. "Varlık duyarlı" bankada Net DV01 < 0 (uzun duration varlık, kısa duration yükümlülük).',
+  },
+  '/risk-ladder': {
+    title: 'DV01 Risk Merdiveni',
+    ozet: 'Portföy DV01\'ini beş vade dilimine bölerek her kovada hedge baskısını ve yön bilgisini görselleştirir.',
+    formulas: [
+      { label: 'DV01 birim',   f: 'DV01 = ModD × PV × 0.0001' },
+      { label: 'DV01 portföy', f: 'DV01_M = DV01_birim / 100 × Nominal_M  (M TL/bps)' },
+      { label: 'Net DV01',     f: 'Net = Σ Varlık_DV01 − Σ Yükümlülük_DV01' },
+    ],
+    veri: ['Portföy JSON: data/bond_portfolio.json', 'price_bond_full() → anlık YTM ve ModD hesabı', 'Otomatik kovalar: 0-1Y, 1-2Y, 2-5Y, 5-10Y, 10Y+'],
+    notlar: 'Hedge önerisi: Net DV01 eşiğini aşan kovalar için IRS veya tahvil işlemi miktarı otomatik hesaplanır.',
+  },
+  '/carry-calc': {
+    title: 'Carry & Roll-Down',
+    ozet: 'Tahvilin elde tutma süresi boyunca kupon gelirini (carry) ve eğri boyunca kayma getirisini (roll-down) ayrıştırır. Faiz şok senaryoları ve başa baş bps hesabı.',
+    formulas: [
+      { label: 'Brüt Carry',  f: 'Carry = (Kupon% / 100) × T_yıl' },
+      { label: 'Net Carry',   f: 'Net Carry = (Kupon% − Repo%) / 100 × T_yıl' },
+      { label: 'Roll-Down',   f: 'P_gelecek = Σ C/(1+ytm_kalan)^t + 100/(1+ytm_kalan)^n' },
+      { label: 'RD Getiri',   f: 'RD% = (P_gelecek − P_şimdiki) / P_şimdiki × 100' },
+      { label: 'Başa Baş',    f: 'brentq(Net Carry + ΔP = 0) → başa baş bps' },
+    ],
+    veri: ['TR hazine eğrisi (yield-curve API → TCMB)', 'price_bond_full() → cari YTM ve duration', '_price_at_ytm() → senaryo yeniden fiyatlaması (doğrudan DCF)'],
+    notlar: 'Senaryo fiyatlaması price_bond_full() değil _price_at_ytm() kullanır — sabit kuponda base_rate parametresi çalışmaz.',
+  },
+  '/portfolio-oas': {
+    title: 'Portföy Risk Tablosu',
+    ozet: 'Çoklu pozisyon portföyünde ağırlıklı ortalama duration, OAS ve toplam DV01 hesaplaması. Varlık/yükümlülük ayrımıyla net risk özeti.',
+    formulas: [
+      { label: 'DV01 portföy',  f: 'DV01_port = Σ (ModD_i × MV_i × 0.0001)' },
+      { label: 'Ağırlıklı Dur', f: 'D_ağır = Σ (MacD_i × MV_i) / Σ MV_i' },
+      { label: 'Net DV01',      f: 'Net = Σ Varlık_DV01 − Σ Yük._DV01' },
+    ],
+    veri: ['Portföy JSON: data/bond_portfolio.json', 'price_bond_full() → YTM, ModD, MacD, DV01 (her pozisyon için)'],
+  },
+  '/rv-matrix': {
+    title: 'Göreli Değer Matrisi',
+    ozet: 'ABD ve TR spread göstergelerinin 1 yıllık tarihsel z-skor matrisi. Aşırı genişleme (AL) ve daralma (SAT) sinyalleri üretir.',
+    formulas: [
+      { label: 'Z-Skor',          f: 'Z = (Güncel − Ortalama) / Std. Sapma' },
+      { label: 'Aşırı genişleme', f: 'Z > +2  →  AL sinyali' },
+      { label: 'Aşırı daralma',   f: 'Z < −2  →  SAT sinyali' },
+    ],
+    veri: ['FRED BAML OAS serileri: BAMLC0A1CAASW (AAA) → BAMLH0A3HYCCSW (CCC)', 'TCMB TR hazine getiri eğrisi (ONFA, OIS, tahvil)', '1 yıllık geçmiş — otomatik çekiliyor'],
+  },
+  '/carry-trade': {
+    title: 'Carry Ticaret P&L',
+    ozet: 'TRY carry trade: yabancı para borçlanıp TRY enstrümana yatırım. FX senaryo P&L matrisi ve başa baş kur hesabı.',
+    formulas: [
+      { label: 'Brüt Carry (yıllık)', f: 'Carry_ann = TRY_Faiz% − Fonlama_Faiz%' },
+      { label: 'TRY geliri',           f: 'TRY_gelir = N_USD × Kur × TRY_Faiz × T' },
+      { label: 'USD maliyeti',         f: 'USD_maliyet = N_USD × Fonlama_Faiz × T' },
+      { label: 'P&L (USD)',            f: 'P&L = TRY_gelir / Kur_sonu − USD_maliyet' },
+      { label: 'Başa baş kur',         f: 'Kur_BE = Kur × (1 + TRY×T) / (1 + Fonlama×T)' },
+    ],
+    veri: ['yfinance USDTRY=X: canlı spot kur ve tarihsel volatilite (1Y)', 'TCMB: TRY politika faizi (kullanıcı doğrulayabilir)', 'Kullanıcı: fonlama faizi, nominal, elde tutma süresi'],
+  },
+  '/fx-ladder': {
+    title: 'FX Merdiveni',
+    ozet: 'Döviz vade bazında nakit akışı ve kur riski. Farklı dövizlerin vade profilini ve kümülatif açık pozisyonunu gösterir.',
+    formulas: [
+      { label: 'Kümülatif gap', f: 'Gap(t) = Σ FX_Giriş(t) − Σ FX_Çıkış(t)' },
+    ],
+    veri: ['Kullanıcı FX nakit akış girişleri', 'Canlı spot kurlar (yfinance / TCMB)'],
+  },
+  '/hedge-book': {
+    title: 'Hedge Book',
+    ozet: 'Aktif hedge pozisyonlarının merkezi kaydı. IRS, FX forward ve tahvil pozisyonları için gerçekleşen ve MTM P&L takibi.',
+    formulas: [
+      { label: 'IRS MTM', f: 'MTM = Σ CF_t_sabit/(1+r)^t − Σ CF_t_değişken/(1+r)^t' },
+    ],
+    veri: ['data/hedge_book.json: kalıcı pozisyon depolama', 'FRED hazine eğrisi: MTM yeniden fiyatlama'],
+  },
+  '/limit-dashboard': {
+    title: 'Limit Paneli',
+    ozet: 'Tüm risk limitlerinin (duration, DV01/kova, NOP, VaR, konsantrasyon) anlık kullanım oranlarını RAG (kırmızı-sarı-yeşil) skoru ile gösterir. Limitler data/limit_config.json\'dan okunur ve kullanıcı tarafından güncellenebilir.',
+    formulas: [
+      { label: 'Kullanım Oranı', f: 'Kullanım% = |Güncel Değer| / Limit × 100' },
+      { label: 'Parametrik VaR', f: 'VaR = Net_DV01 × σ_TR_günlük × z₀.₉₉ × √T' },
+      { label: 'TR volatilite',  f: 'σ_TR_bps_yıllık = MOVE × 2.5  →  σ_günlük = σ_yıllık / √252' },
+      { label: 'Konsantrasyon',  f: 'Konst% = En büyük ihraçcı MV / Toplam MV × 100' },
+    ],
+    veri: ['data/limit_config.json: kullanıcı tanımlı limit eşikleri', 'run_portfolio_oas() → DV01, duration, piyasa değeri', 'build_risk_ladder() → kova bazında DV01', 'FRED MOVE endeksi → VaR volatilite girdisi'],
+    notlar: 'RAG eşikleri: %75 → Sarı (Dikkat), %90 → Kırmızı (Limit Aşımı). VaR: %99 güven aralığı, 1 günlük tutma, TR faiz volatilitesi MOVE × 2.5 ile ölçeklenir.',
+  },
+  '/pnl-attribution': {
+    title: 'P&L Attribution',
+    ozet: 'Günlük P&L\'yi beş faktöre ayırır: carry (kupon tahakkuku), duration (oran hareketi × DV01), eğri şekli (dikleşme/düzleşme), FX delta (döviz pozisyonu × kur değişimi) ve artık (model farkı). Snapshot mekanizması ile ardışık günler karşılaştırılır.',
+    formulas: [
+      { label: 'Carry',         f: 'Carry_M = Σ (Kupon%/100 × Par_M × T_yıl) × Yön' },
+      { label: 'Duration P&L',  f: 'ΔP_dur = −Yön × DV01_M × Δr_bps' },
+      { label: 'Eğri P&L',      f: 'ΔP_eğri = Yön × DV01_M × (Δr_10Y − Δr_2Y)_bps × (Mat_Y − 2) / 8' },
+      { label: 'FX P&L',        f: 'ΔP_fx = Pos_USD × ΔUSDTRY + Pos_EUR × ΔEURTRY' },
+      { label: 'Artık',         f: 'Artık = Gerçek P&L − (Carry + Duration + Eğri + FX)' },
+    ],
+    veri: ['data/pnl_snapshots.json: ardışık fiyat ve eğri kayıtları', 'run_portfolio_oas() → güncel YTM, ModD, DV01', 'TR/US eğri hareketleri (snapshot farkı)', 'data/fx_position.json: FX pozisyon (varsa)'],
+    notlar: 'İlk snapshot alınana kadar örnek veriler gösterilir. EOD Brief her gün otomatik snapshot alır. Snapshot manuel olarak da alınabilir.',
+  },
+  '/stress-library': {
+    title: 'Tarihsel Stres Kütüphanesi',
+    ozet: 'Türkiye\'ye özgü 6 kalibre edilmiş tarihsel stres olayını mevcut portföye uygular. Her senaryo gerçekleşen piyasa hareketlerinden çıkarılmıştır. Vade bazında interpolasyon ile her pozisyon için ayrı faiz şoku uygulanır.',
+    formulas: [
+      { label: 'Şok YTM',       f: 'YTM_stres = max(0.1%, YTM + Δr_senaryo / 100)' },
+      { label: 'Stres Fiyat',   f: 'P_stres = Σ C/(1+YTM_stres/freq)^t + 100/(1+YTM_stres/freq)^n' },
+      { label: 'P&L Etkisi',    f: 'ΔP&L = Σ Yön_i × Par_M_i × (P_stres_i − P_baz_i) / 100' },
+      { label: 'Vade interp.',  f: 'Δr(mat_y) = Δr_2Y + (Δr_10Y−Δr_2Y) × (mat_y−1.5)/8.5' },
+    ],
+    veri: ['Senaryo şokları: gerçek piyasa gözlemlerinden kalibre (Ağu 2018, Mar 2021, Mar 2020, May 2013, 2022, Haz 2023)', 'data/bond_portfolio.json: mevcut portföy', 'run_portfolio_oas() → baz YTM ve DV01'],
+    notlar: 'Senaryolar değiştirilemez (tarihsel sabitler). Özel senaryo eklemek için data/custom_stress_scenarios.json kullanılır. FX etkisi data/fx_position.json mevcutsa dahil edilir.',
+  },
+  '/eod-brief': {
+    title: 'Gün Sonu Brief',
+    ozet: 'Her gün kapanışta otomatik üretilen yönetici özeti. Bugünkü piyasa hareketleri, portföy durumu, limit kullanımı, P&L attribution ve yarın için dikkat edilecek noktaları birleştirir.',
+    formulas: [
+      { label: 'Günlük hareket', f: 'Δ = Güncel değer − Önceki snapshot değeri' },
+    ],
+    veri: ['Tüm alt modüllerin çıktıları: portföy, limitler, P&L attribution', 'TCMB EVDS (varsa) veya fallback kaynaklar', 'data/eod_cache.json: son üretilen brief', 'data/pnl_snapshots.json: karşılaştırma için önceki snapshot'],
+    notlar: '"Üret & Güncelle" butonu tıklandığında veya çağrıldığında otomatik EOD snapshot alınır. "Son Kayıt" butonu önbellekten yükler (API çağrısı yapmaz).',
+  },
+  '/funding-engine': {
+    title: 'Fonlama Motoru',
+    ozet: 'Kaynak/kullanım vade profili, dönemsel fonlama gap\'i ve marjinal fonlama maliyeti analizi.',
+    formulas: [
+      { label: 'Fonlama Gap',  f: 'Gap(t) = Varlık Nakit Girişi(t) − Yük. Nakit Çıkışı(t)' },
+      { label: 'Top. Maliyet', f: 'Maliyet = Σ (Tutar_i × Oran_i × Gün_i / 365)' },
+    ],
+    veri: ['Manuel bilanço nakit akış takvimi', 'TCMB politika faizi'],
+  },
+};
+
+let metPanelOpen = false;
+
+function openMetodoloji() {
+  const path = window.location.pathname;
+  const db   = METHODOLOGY_DB[path];
+  if (!db) return;  // Bu sayfa için içerik yok
+
+  document.getElementById('metTitle').textContent = db.title;
+  document.getElementById('metOzet').textContent  = db.ozet;
+
+  // Formüller
+  const fDiv = document.getElementById('metFormuller');
+  const fWrap = document.getElementById('metFormullerWrap');
+  if (db.formulas && db.formulas.length > 0) {
+    fDiv.innerHTML = db.formulas.map(f =>
+      `<div style="margin-bottom:0.45rem;padding:0.5rem 0.7rem;background:var(--panel);border-radius:5px;border-left:2px solid var(--gold)">
+        <div style="font-size:0.56rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.2rem">${f.label}</div>
+        <div style="font-size:0.72rem;color:var(--gold);font-family:'DM Mono',monospace">${f.f}</div>
+      </div>`
+    ).join('');
+    fWrap.style.display = '';
+  } else {
+    fWrap.style.display = 'none';
+  }
+
+  // Veri kaynakları
+  const vDiv = document.getElementById('metVeri');
+  if (db.veri && db.veri.length > 0) {
+    vDiv.innerHTML = db.veri.map(v =>
+      `<div style="display:flex;align-items:baseline;gap:0.4rem;margin-bottom:0.2rem">
+        <span style="color:var(--accent);flex-shrink:0">▸</span>
+        <span style="font-size:0.7rem;color:var(--text-secondary)">${v}</span>
+      </div>`
+    ).join('');
+    document.getElementById('metVeriWrap').style.display = '';
+  } else {
+    document.getElementById('metVeriWrap').style.display = 'none';
+  }
+
+  // Notlar
+  const nDiv = document.getElementById('metNotlar');
+  const nWrap = document.getElementById('metNotlarWrap');
+  if (db.notlar) {
+    nDiv.textContent = db.notlar;
+    nWrap.style.display = '';
+  } else {
+    nWrap.style.display = 'none';
+  }
+
+  document.getElementById('metodolojiOverlay').style.display = 'block';
+  document.getElementById('metodolojiPanel').style.display  = 'block';
+  metPanelOpen = true;
+}
+
+function closeMetodoloji() {
+  document.getElementById('metodolojiOverlay').style.display = 'none';
+  document.getElementById('metodolojiPanel').style.display  = 'none';
+  metPanelOpen = false;
+}
+
+function toggleMetodoloji() {
+  if (metPanelOpen) closeMetodoloji();
+  else openMetodoloji();
+}
+</script>
+
+{% block scripts %}{% endblock %}
+</body>
+</html>

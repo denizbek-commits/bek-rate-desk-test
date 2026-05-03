@@ -1,0 +1,317 @@
+{% extends 'base.html' %}
+{% block title %}Ekonomi Takvimi — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.eco-hero { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:1rem; margin-bottom:1.5rem; }
+.event-card { background:var(--panel); }
+.cb-watch-card { background:var(--panel); }
+.notes-textarea { background:var(--panel); }
+.eco-hero-label { font-size:0.62rem; text-transform:uppercase; color:var(--text-muted); margin-bottom:0.3rem; }
+.eco-hero-date { font-family:var(--font-head); font-size:0.9rem; font-weight:700; color:var(--accent); }
+.eco-hero-countdown { font-size:2.5rem; font-weight:800; color:var(--gold); margin:0.5rem 0; }
+.eco-hero-event { font-size:1rem; font-weight:600; color:var(--text); margin-bottom:0.2rem; }
+.eco-hero-impact { font-size:0.75rem; font-weight:700; padding:0.25rem 0.5rem; border-radius:3px; background:rgba(239,68,68,.2); color:var(--red); display:inline-block; margin-top:0.3rem; }
+
+.event-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.65rem 0.8rem; margin-bottom:0.5rem; display:grid; grid-template-columns:24px 1fr auto; gap:0.6rem; align-items:flex-start; }
+.event-dot { width:20px; height:20px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.5rem; flex-shrink:0; }
+.event-dot.tcmb { background:var(--accent); }
+.event-dot.fomc { background:var(--gold); }
+.event-dot.data { background:var(--green); }
+
+.event-main { display:flex; flex-direction:column; gap:0.2rem; }
+.event-date { font-size:0.64rem; color:var(--text-muted); }
+.event-title { font-size:0.75rem; font-weight:600; color:var(--text); }
+.event-note { font-size:0.62rem; color:var(--text-muted); }
+
+.event-countdown { display:flex; flex-direction:column; align-items:flex-end; gap:0.2rem; }
+.countdown-badge { font-size:0.72rem; font-weight:700; padding:0.2rem 0.5rem; border-radius:3px; white-space:nowrap; }
+.countdown-soon { background:rgba(16,185,129,.2); color:var(--green); }
+.countdown-today { background:rgba(239,68,68,.2); color:var(--red); }
+.countdown-past { background:rgba(107,114,128,.2); color:var(--text-muted); }
+
+.impact-high { background:rgba(239,68,68,.15); color:var(--red); }
+.impact-medium { background:rgba(217,119,6,.15); color:var(--gold); }
+.impact-low { background:rgba(16,185,129,.15); color:var(--green); }
+
+.cb-watch-card { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 0.85rem; margin-bottom:0.5rem; }
+.cb-bank { font-size:0.72rem; font-weight:700; color:var(--text); margin-bottom:0.3rem; }
+.cb-info { display:flex; justify-content:space-between; gap:0.5rem; font-size:0.65rem; margin-bottom:0.2rem; }
+.cb-label { color:var(--text-muted); }
+.cb-value { font-family:var(--font-mono); font-weight:600; color:var(--accent); }
+
+.eco-grid { display:grid; grid-template-columns:2fr 1fr; gap:1rem; margin-bottom:1rem; }
+
+.notes-textarea { width:100%; min-height:100px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.6rem; color:var(--text); font-family:var(--font-mono); font-size:0.7rem; resize:vertical; }
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Ekonomi Takvimi</h1>
+      <p>TCMB PPK · FOMC · Önemli veri açıklamaları · Geri sayım</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <span style="font-size:0.65rem;color:var(--text-muted)" id="ecoNow"></span>
+    </div>
+  </div>
+</div>
+
+<!-- HERO: NEXT EVENT -->
+<div class="eco-hero" id="ecoHero">
+  <div class="eco-hero-label">Sonraki Önemli Olay</div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start">
+    <div>
+      <div class="eco-hero-date" id="heroEventDate">—</div>
+      <div class="eco-hero-event" id="heroEventName">—</div>
+      <div id="heroEventImpact"></div>
+    </div>
+    <div style="text-align:right">
+      <div class="eco-hero-countdown" id="heroCountdown">—</div>
+      <div style="font-size:0.65rem;color:var(--text-muted)">gün kaldı</div>
+    </div>
+  </div>
+</div>
+
+<!-- MAIN GRID -->
+<div class="eco-grid">
+  <!-- LEFT: UPCOMING EVENTS -->
+  <div class="card">
+    <div class="card-title">Yaklaşan Olaylar (Sonraki 60 Gün)</div>
+    <div id="ecoEventList"></div>
+  </div>
+
+  <!-- RIGHT: CENTRAL BANK WATCH -->
+  <div class="card">
+    <div class="card-title">Merkez Bankası İzleme</div>
+    <div id="cbWatch"></div>
+  </div>
+</div>
+
+<!-- NOTES -->
+<div class="card">
+  <div class="card-title">Takvim Notları</div>
+  <textarea class="notes-textarea" id="ecoNotes" placeholder="Dealer notları — işlem sonrası veya öncesi analizler..."></textarea>
+  <button class="btn btn-ghost" style="margin-top:0.5rem" onclick="saveNotes()">💾 Notları Kaydet (Oturum)</button>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── EKONOMI TAKVİMİ ──────────────────────────────────────────────────────────
+
+const EVENTS = [
+  // TCMB MPK 2026
+  {date:'2026-04-17', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı ve basın bülteni'},
+  {date:'2026-05-22', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-06-20', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-07-03', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-08-14', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-09-25', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-11-06', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı'},
+  {date:'2026-12-18', type:'TCMB', label:'TCMB PPK Kararı', impact:'HIGH', note:'Faiz kararı ve yıl sonu'},
+
+  // FOMC 2026
+  {date:'2026-04-29', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı'},
+  {date:'2026-06-15', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı'},
+  {date:'2026-07-28', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı'},
+  {date:'2026-09-16', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı'},
+  {date:'2026-11-03', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı'},
+  {date:'2026-12-15', type:'FOMC', label:'FOMC Toplantısı', impact:'HIGH', note:'Fed faiz kararı ve yıl sonu'},
+
+  // Turkish Data
+  {date:'2026-04-07', type:'TR_DATA', label:'CPI (TUIK)', impact:'HIGH', note:'Enflasyon verisi'},
+  {date:'2026-05-07', type:'TR_DATA', label:'CPI (TUIK)', impact:'HIGH', note:'Enflasyon verisi'},
+  {date:'2026-06-03', type:'TR_DATA', label:'CPI (TUIK)', impact:'HIGH', note:'Enflasyon verisi'},
+  {date:'2026-04-20', type:'TR_DATA', label:'Current Account (TCMB)', impact:'MEDIUM', note:'Cari hesap dengesi'},
+  {date:'2026-05-20', type:'TR_DATA', label:'Current Account (TCMB)', impact:'MEDIUM', note:'Cari hesap dengesi'},
+  {date:'2026-06-15', type:'TR_DATA', label:'GDP Q1 (TUIK)', impact:'HIGH', note:'İlk çeyrek büyüme'},
+
+  // US Data
+  {date:'2026-04-03', type:'US_DATA', label:'ISM Manufacturing', impact:'MEDIUM', note:'Üretim PMI'},
+  {date:'2026-04-10', type:'US_DATA', label:'CPI (BLS)', impact:'HIGH', note:'Enflasyon verisi'},
+  {date:'2026-04-17', type:'US_DATA', label:'Initial Jobless Claims', impact:'MEDIUM', note:'İşsizlik yardımı başvuruları'},
+  {date:'2026-05-08', type:'US_DATA', label:'NFP (BLS)', impact:'HIGH', note:'İstihdam verisi — 1. Cuma'},
+  {date:'2026-05-15', type:'US_DATA', label:'Retail Sales', impact:'MEDIUM', note:'Perakende satışları'},
+  {date:'2026-06-05', type:'US_DATA', label:'NFP (BLS)', impact:'HIGH', note:'İstihdam verisi — 1. Cuma'},
+  {date:'2026-06-12', type:'US_DATA', label:'CPI (BLS)', impact:'HIGH', note:'Enflasyon verisi'},
+];
+
+function today() {
+  const d = new Date();
+  return d.toISOString().split('T')[0];
+}
+
+function daysUntil(dateStr) {
+  const d1 = new Date(dateStr);
+  const d2 = new Date(today());
+  const ms = d1 - d2;
+  return Math.ceil(ms / (1000*60*60*24));
+}
+
+function formatDateTR(dateStr) {
+  const d = new Date(dateStr + 'T00:00:00');
+  const monthsTR = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+  const daysTR = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+  return `${d.getDate()} ${monthsTA[d.getMonth()]} ${d.getFullYear()} ${daysTA[d.getDay()]}`;
+}
+
+const monthsTA = ['Ocak','Şubat','Mart','Nisan','Mayıs','Haziran','Temmuz','Ağustos','Eylül','Ekim','Kasım','Aralık'];
+const daysTA = ['Pazar','Pazartesi','Salı','Çarşamba','Perşembe','Cuma','Cumartesi'];
+
+function renderEcoCalendar() {
+  const todayStr = today();
+  const upcoming = EVENTS
+    .filter(e => daysUntil(e.date) <= 60 && daysUntil(e.date) >= -1)
+    .sort((a, b) => new Date(a.date) - new Date(b.date));
+
+  // Hero: next HIGH impact event
+  const nextHighEvent = EVENTS
+    .filter(e => daysUntil(e.date) >= 0 && e.impact === 'HIGH')
+    .sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
+
+  if (nextHighEvent) {
+    const days = daysUntil(nextHighEvent.date);
+    const d = new Date(nextHighEvent.date + 'T00:00:00');
+    document.getElementById('heroEventDate').textContent =
+      `${d.getDate()} ${monthsTA[d.getMonth()]} ${d.getFullYear()} ${daysTA[d.getDay()]}`;
+    document.getElementById('heroEventName').textContent = nextHighEvent.label;
+    document.getElementById('heroCountdown').textContent = days === 0 ? 'BUGÜN' : days;
+    const impactClass = nextHighEvent.impact === 'HIGH' ? 'background:rgba(239,68,68,.2);color:var(--red)' :
+                        nextHighEvent.impact === 'MEDIUM' ? 'background:rgba(217,119,6,.2);color:var(--gold)' :
+                        'background:rgba(16,185,129,.2);color:var(--green)';
+    document.getElementById('heroEventImpact').innerHTML =
+      `<div style="font-size:0.7rem;font-weight:700;padding:0.25rem 0.5rem;border-radius:3px;${impactClass};display:inline-block;margin-top:0.3rem">${nextHighEvent.impact}</div>`;
+  }
+
+  // Event list
+  const eventListHTML = upcoming.map(e => {
+    const days = daysUntil(e.date);
+    let countdownClass = 'countdown-soon';
+    let countdownText = `${days} gün`;
+    if (days === 0) {
+      countdownClass = 'countdown-today';
+      countdownText = 'Bugün!';
+    } else if (days < 0) {
+      countdownClass = 'countdown-past';
+      countdownText = 'Geçti';
+    }
+
+    const dotClass = e.type === 'TCMB' ? 'tcmb' : e.type === 'FOMC' ? 'fomc' : 'data';
+    const impactClass = e.impact === 'HIGH' ? 'impact-high' :
+                        e.impact === 'MEDIUM' ? 'impact-medium' : 'impact-low';
+
+    const d = new Date(e.date + 'T00:00:00');
+    const dateDisplay = `${d.getDate()} ${monthsTA[d.getMonth()]} ${daysTA[d.getDay()]}`;
+
+    return `
+      <div class="event-card">
+        <div class="event-dot ${dotClass}">●</div>
+        <div class="event-main">
+          <div class="event-date">${dateDisplay}</div>
+          <div class="event-title">${e.label}</div>
+          <div class="event-note">${e.note}</div>
+        </div>
+        <div class="event-countdown">
+          <span class="countdown-badge ${countdownClass}">${countdownText}</span>
+          <span class="countdown-badge ${impactClass}" style="font-size:0.6rem">${e.impact}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  document.getElementById('ecoEventList').innerHTML = eventListHTML;
+
+  // Central Bank Watch
+  const tcmbNext = EVENTS
+    .filter(e => e.type === 'TCMB' && daysUntil(e.date) >= 0)
+    .sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
+
+  const fomcNextEvent = EVENTS
+    .filter(e => e.type === 'FOMC' && daysUntil(e.date) >= 0)
+    .sort((a, b) => daysUntil(a.date) - daysUntil(b.date))[0];
+
+  let cbHTML = '';
+
+  if (tcmbNext) {
+    const d = new Date(tcmbNext.date + 'T00:00:00');
+    const days = daysUntil(tcmbNext.date);
+    cbHTML += `
+      <div class="cb-watch-card">
+        <div class="cb-bank">🇹🇷 TCMB</div>
+        <div class="cb-info">
+          <span class="cb-label">Sonraki PPK:</span>
+          <span class="cb-value">${d.getDate()} ${monthsTA[d.getMonth()]}</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Gün sayısı:</span>
+          <span class="cb-value">${days}</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Politika Faizi:</span>
+          <span class="cb-value">46.00%</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Koridor:</span>
+          <span class="cb-value">+150/-150 bps</span>
+        </div>
+      </div>
+    `;
+  }
+
+  if (fomcNextEvent) {
+    const d = new Date(fomcNextEvent.date + 'T00:00:00');
+    const days = daysUntil(fomcNextEvent.date);
+    cbHTML += `
+      <div class="cb-watch-card">
+        <div class="cb-bank">🇺🇸 FED</div>
+        <div class="cb-info">
+          <span class="cb-label">Sonraki FOMC:</span>
+          <span class="cb-value">${d.getDate()} ${monthsTA[d.getMonth()]}</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Gün sayısı:</span>
+          <span class="cb-value">${days}</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Fed Funds Rate:</span>
+          <span class="cb-value">4.33%</span>
+        </div>
+        <div class="cb-info">
+          <span class="cb-label">Ön görünüm:</span>
+          <span class="cb-value">Nötr</span>
+        </div>
+      </div>
+    `;
+  }
+
+  document.getElementById('cbWatch').innerHTML = cbHTML;
+
+  // Update timestamp
+  const now = new Date();
+  document.getElementById('ecoNow').textContent = now.toLocaleTimeString('tr-TR');
+}
+
+function saveNotes() {
+  const notes = document.getElementById('ecoNotes').value;
+  localStorage.setItem('ecoNotes', notes);
+  showToast('Notlar kaydedildi (tarayıcı)');
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);
+}
+
+// Init
+renderEcoCalendar();
+
+// Load saved notes
+const savedNotes = localStorage.getItem('ecoNotes');
+if (savedNotes) document.getElementById('ecoNotes').value = savedNotes;
+
+// Update every minute
+setInterval(renderEcoCalendar, 60000);
+</script>
+{% endblock %}

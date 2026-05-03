@@ -1,0 +1,276 @@
+{% extends 'base.html' %}
+{% block title %}Kur Listesi Üreticisi — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+.rs-control-bar { background:var(--panel); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; margin-bottom:1.25rem; display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap; }
+.rs-pair-header { background:var(--panel); }
+.rs-control-group { display:flex; flex-direction:column; gap:0.3rem; }
+.rs-control-label { font-size:0.58rem; text-transform:uppercase; color:var(--text-muted); }
+.rs-control-input { width:140px; }
+
+.rs-pair-toggles { display:flex; gap:0.4rem; align-items:center; }
+.rs-toggle-pair { display:inline-flex; align-items:center; padding:0.25rem 0.6rem; border-radius:3px; border:1px solid var(--border); background:var(--surface); cursor:pointer; font-size:0.65rem; font-weight:500; color:var(--text-muted); transition:all 0.15s; }
+.rs-toggle-pair.active { background:var(--accent); border-color:var(--accent); color:#fff; }
+.rs-toggle-pair:hover { border-color:var(--accent); }
+
+.rate-sheet-header { background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:0.75rem 1rem; margin-bottom:1rem; }
+.rs-header-title { font-family:var(--font-head); font-size:1.1rem; font-weight:700; }
+.rs-header-sub { font-size:0.65rem; color:var(--text-muted); margin-top:0.2rem; }
+
+.rate-sheet-pair { page-break-inside:avoid; margin-bottom:1.5rem; }
+.rs-pair-header { background:var(--surface); border-left:3px solid var(--accent); padding:0.5rem 0.75rem; border-radius:var(--radius); margin-bottom:0.5rem; }
+.rs-pair-name { font-family:var(--font-head); font-size:1.2rem; font-weight:700; }
+.rs-pair-time { font-size:0.62rem; color:var(--text-muted); }
+
+.rate-table { width:100%; border-collapse:collapse; font-size:0.72rem; }
+.rate-table th { text-align:left; padding:0.4rem 0.6rem; background:var(--surface); color:var(--text-muted); font-size:0.6rem; text-transform:uppercase; letter-spacing:0.06em; border-bottom:1px solid var(--border); font-weight:500; }
+.rate-table td { padding:0.45rem 0.6rem; border-bottom:1px solid var(--border-soft); font-family:var(--font-mono); }
+.rate-table tr:hover { background:rgba(37,99,235,.04); }
+
+.rate-bid { color:var(--red); font-weight:600; }
+.rate-ask { color:var(--green); font-weight:600; }
+.rate-swap { color:var(--gold); font-weight:600; }
+
+.rs-print-hidden { display:none; }
+
+@media print {
+  #appSidebar, .page-header, .rs-control-bar, .btn { display:none !important; }
+  body { background:#fff; color:#000; }
+  .rate-sheet-pair { page-break-inside:avoid; margin-bottom:1.25rem; }
+  .rs-pair-header { background:#f5f5f5; border:1px solid #ccc; }
+  .rate-table th { background:#f5f5f5; color:#000; border:1px solid #ccc; }
+  .rate-table td { border:1px solid #ccc; color:#000; }
+  .rate-bid { color:#d32f2f; }
+  .rate-ask { color:#388e3c; }
+  .rate-swap { color:#f57c00; }
+  .rate-table tr:hover { background:transparent !important; }
+  .card { border:1px solid #ccc; page-break-inside:avoid; }
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <div class="flex-between">
+    <div>
+      <h1>Kur Listesi Üreticisi</h1>
+      <p>Müşteri segmentine göre spot + forward fiyat listesi · Kurumsal · Bireysel · VIP</p>
+    </div>
+    <div style="display:flex;gap:0.5rem;align-items:center">
+      <button class="btn btn-ghost" onclick="loadLiveRatesRS()">📡 Canlı Kur</button>
+      <button class="btn btn-ghost" onclick="rsSample()">↺ Örnek</button>
+      <button class="btn btn-primary" onclick="window.print()">🖨 Yazdır</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONTROL BAR -->
+<div class="rs-control-bar">
+  <div class="rs-control-group" style="flex:1">
+    <label class="rs-control-label">Müşteri Tipi</label>
+    <select class="form-select" id="rsCustType" style="width:160px">
+      <option value="retail">Bireysel</option>
+      <option value="corporate">Kurumsal</option>
+      <option value="vip">VIP / Prime</option>
+      <option value="interbank">Bankalararası</option>
+    </select>
+  </div>
+
+  <div class="rs-control-group">
+    <label class="rs-control-label">Pariteleri Seç</label>
+    <div class="rs-pair-toggles">
+      <span class="rs-toggle-pair active" data-pair="USDTRY" onclick="toggleRSPair(this)">USD/TRY</span>
+      <span class="rs-toggle-pair active" data-pair="EURTRY" onclick="toggleRSPair(this)">EUR/TRY</span>
+      <span class="rs-toggle-pair active" data-pair="GBPTRY" onclick="toggleRSPair(this)">GBP/TRY</span>
+      <span class="rs-toggle-pair" data-pair="EURUSD" onclick="toggleRSPair(this)">EUR/USD</span>
+    </div>
+  </div>
+
+  <div class="rs-control-group" style="flex:1;max-width:120px">
+    <label class="rs-control-label">TRY Faizi (%)</label>
+    <input class="form-input" id="rsTRY" type="number" placeholder="42.5" step="0.1" value="42.5"/>
+  </div>
+
+  <div class="rs-control-group" style="flex:1;max-width:120px">
+    <label class="rs-control-label">USD Faizi (%)</label>
+    <input class="form-input" id="rsUSD" type="number" placeholder="4.5" step="0.1" value="4.5"/>
+  </div>
+
+  <div class="rs-control-group" style="flex:1;max-width:120px">
+    <label class="rs-control-label">EUR Faizi (%)</label>
+    <input class="form-input" id="rsEUR" type="number" placeholder="3.8" step="0.1" value="3.8"/>
+  </div>
+
+  <div class="rs-control-group">
+    <label class="rs-control-label">Forward Dahil</label>
+    <div style="display:flex;gap:0.4rem;align-items:center">
+      <input type="checkbox" id="rsIncludeFwd" checked style="width:18px;height:18px;cursor:pointer"/>
+    </div>
+  </div>
+
+  <div style="flex:1;display:flex;gap:0.5rem;justify-content:flex-end">
+    <button class="btn btn-primary" onclick="buildRateSheet()">▶ Liste Üret</button>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div id="rsResult">
+  <div class="coming-soon" style="min-height:200px">
+    <div class="coming-soon-icon">📄</div>
+    <p>Parametreleri seçin ve Liste Üret'e tıklayın.<br>Kur listesi branş müdürüne sunulmaya hazırlanır.</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// ── RATE SHEET PRODUCER ──────────────────────────────────────────────────────
+
+let rsPairSelection = {USDTRY:true, EURTRY:true, GBPTRY:true, EURUSD:false};
+
+function toggleRSPair(el) {
+  const pair = el.getAttribute('data-pair');
+  rsPairSelection[pair] = !rsPairSelection[pair];
+  el.classList.toggle('active');
+}
+
+async function loadLiveRatesRS() {
+  try {
+    const resp = await fetch('/api/trading/live-rates');
+    const d = await resp.json();
+    // Rates are used in buildRateSheet() when fetching
+    showToast('Canlı kurlar hazır');
+  } catch(err) {
+    showToast('Kurlar yüklenemedi');
+  }
+}
+
+function rsSample() {
+  document.getElementById('rsCustType').value = 'corporate';
+  document.getElementById('rsTRY').value = '42.5';
+  document.getElementById('rsUSD').value = '4.5';
+  document.getElementById('rsEUR').value = '3.8';
+  document.getElementById('rsIncludeFwd').checked = true;
+  buildRateSheet();
+}
+
+async function buildRateSheet() {
+  const custType = document.getElementById('rsCustType').value;
+  const tryRate = parseFloat(document.getElementById('rsTRY').value) || 42.5;
+  const usdRate = parseFloat(document.getElementById('rsUSD').value) || 4.5;
+  const eurRate = parseFloat(document.getElementById('rsEUR').value) || 3.8;
+  const incFwd = document.getElementById('rsIncludeFwd').checked;
+
+  const selectedPairs = Object.keys(rsPairSelection).filter(p => rsPairSelection[p]);
+  if (!selectedPairs.length) {
+    showToast('En az bir parite seçin');
+    return;
+  }
+
+  const payload = {
+    customer_type: custType,
+    pairs: selectedPairs,
+    rate_try: tryRate, rate_usd: usdRate, rate_eur: eurRate,
+    include_forwards: incFwd
+  };
+
+  document.getElementById('rsResult').innerHTML =
+    '<div class="loading"><div class="spinner"></div> Liste üretiliyor...</div>';
+
+  try {
+    const resp = await fetch('/api/dealer/rate-sheet', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(payload)
+    });
+    const d = await resp.json();
+    if (d.error) throw new Error(d.error);
+    renderRateSheet(d);
+  } catch(err) {
+    document.getElementById('rsResult').innerHTML =
+      `<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${err.message}</p></div>`;
+  }
+}
+
+function renderRateSheet(d) {
+  const custLabel = {
+    retail: 'Bireysel Müşteriler',
+    corporate: 'Kurumsal Müşteriler',
+    vip: 'VIP / Prime Müşteriler',
+    interbank: 'Bankalararası'
+  }[d.customer_type] || d.customer_type;
+
+  const now = new Date();
+  const timeStr = now.toLocaleTimeString('tr-TR');
+  const dateStr = now.toLocaleDateString('tr-TR');
+
+  let pairHTML = '';
+
+  if (d.by_pair) {
+    for (const [pair, pairData] of Object.entries(d.by_pair)) {
+      // Spot row
+      const spotRows = `
+        <tr>
+          <td colspan="2" style="font-weight:700;background:var(--surface);padding:0.5rem 0.6rem">SPOT</td>
+          <td class="rate-bid">${pairData.spot_bid}</td>
+          <td class="rate-ask">${pairData.spot_ask}</td>
+        </tr>
+      `;
+
+      // Forward rows (if present)
+      let fwdRows = '';
+      if (pairData.forwards && pairData.forwards.length) {
+        fwdRows = pairData.forwards.map(f => `
+          <tr>
+            <td colspan="2">${f.tenor}</td>
+            <td class="rate-bid">${f.fwd_bid}</td>
+            <td class="rate-ask">${f.fwd_ask}</td>
+          </tr>
+          <tr style="background:var(--surface-soft)">
+            <td colspan="4" style="padding:0.3rem 0.6rem;font-size:0.62rem;color:var(--text-muted)">
+              Swap Puanı: <span class="rate-swap">${f.swap_bid} / ${f.swap_ask}</span>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      pairHTML += `
+        <div class="rate-sheet-pair">
+          <div class="rs-pair-header">
+            <div class="rs-pair-name">${pair}</div>
+            <div class="rs-pair-time">${timeStr} IST</div>
+          </div>
+          <table class="rate-table">
+            <thead><tr><th colspan="2">Tenor</th><th>BID</th><th>ASK</th></tr></thead>
+            <tbody>
+              ${spotRows}
+              ${fwdRows}
+            </tbody>
+          </table>
+        </div>
+      `;
+    }
+  }
+
+  document.getElementById('rsResult').innerHTML = `
+    <div class="rate-sheet-header">
+      <div class="rs-header-title">KUR LİSTESİ — ${custLabel}</div>
+      <div class="rs-header-sub">Üretim: ${dateStr} ${timeStr} IST</div>
+    </div>
+    ${pairHTML}
+    <div style="font-size:0.62rem;color:var(--text-muted);margin-top:2rem;padding:0.5rem;border-top:1px solid var(--border)">
+      Bu kur listesi özel olarak hazırlanmıştır. Fiyatlar canlıdır ve 2 saat geçerliliği vardır.
+      Müşteri tarafından teklif kabul edilmesi halinde işlem anında kur teyidi yapılmalıdır.
+    </div>
+  `;
+}
+
+function showToast(msg) {
+  const t = document.createElement('div');
+  t.style.cssText='position:fixed;bottom:20px;right:20px;background:#10b981;color:#fff;padding:0.5rem 1rem;border-radius:6px;font-size:0.7rem;z-index:9999;font-family:var(--font-mono)';
+  t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),2500);
+}
+
+// Init
+setTimeout(() => rsSample(), 300);
+</script>
+{% endblock %}

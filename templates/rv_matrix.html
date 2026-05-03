@@ -1,0 +1,692 @@
+{% extends "base.html" %}
+
+{% block title %}Göreli Değer Matrisi — Bek Rate Desk{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Spread Cards ─────────────────────────────────────────── */
+  .spread-card {
+    background: var(--panel);
+    border: 2px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+    position: relative;
+  }
+  .spread-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+  }
+  .spread-card::after {
+    content: '📈';
+    position: absolute;
+    top: 0.4rem;
+    right: 0.5rem;
+    font-size: 0.65rem;
+    opacity: 0.35;
+  }
+  .spread-card.no-history::after { content: ''; }
+
+  .spread-card.z-extreme-wide  { border-color: var(--red);       background: rgba(239,68,68,0.10); }
+  .spread-card.z-wide          { border-color: var(--gold);      background: rgba(245,158,11,0.10); }
+  .spread-card.z-neutral       { border-color: var(--text-muted);background: transparent; }
+  .spread-card.z-tight         { border-color: var(--green);     background: rgba(16,185,129,0.08); }
+  .spread-card.z-extreme-tight { border-color: var(--green);     background: rgba(16,185,129,0.15); }
+
+  .spread-name  { font-weight: 600; font-size: 0.9rem;  color: var(--text);       margin-bottom: 0.5rem; }
+  .spread-value { font-size: 1.3rem; font-weight: 700;  color: var(--gold);       margin-bottom: 0.3rem; }
+  .spread-zscore{ font-size: 0.75rem; color: var(--text-muted);  margin-bottom: 0.5rem; }
+
+  .signal-badge      { display: inline-block; padding: 0.3rem 0.6rem; border-radius: 3px; font-size: 0.7rem; font-weight: 600; }
+  .signal-extreme-wide  { background: rgba(239,68,68,0.3);   color: var(--red); }
+  .signal-wide          { background: rgba(245,158,11,0.3);  color: var(--gold); }
+  .signal-neutral       { background: rgba(100,116,139,0.3); color: var(--text-muted); }
+  .signal-tight         { background: rgba(16,185,129,0.3);  color: var(--green); }
+  .signal-extreme-tight { background: rgba(16,185,129,0.5);  color: var(--green); }
+
+  .grid-wrap {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .section-header {
+    font-weight: 600; font-size: 0.95rem; color: var(--text);
+    margin-top: 1.5rem; margin-bottom: 1rem;
+    padding-bottom: 0.5rem; border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .section-header .badge {
+    background: var(--accent-glow); color: var(--accent);
+    font-size: 0.65rem; padding: 0.2rem 0.5rem; border-radius: 3px; font-weight: 400;
+  }
+
+  .yield-table { width: 100%; font-size: 0.8rem; border-collapse: collapse; }
+  .yield-table td, .yield-table th { padding: 0.5rem; text-align: right; }
+  .yield-table th { text-align: right; color: var(--text-muted); font-size: 0.7rem; text-transform: uppercase; border-bottom: 1px solid var(--border); }
+  .yield-table th:first-child, .yield-table td:first-child { text-align: left; }
+  .yield-table tbody tr:nth-child(even) { background: var(--border-soft); }
+
+  .legend {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem; margin-top: 1.5rem; padding: 1rem;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+  }
+  .legend-item  { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8rem; }
+  .legend-dot   { width: 12px; height: 12px; border-radius: 2px; flex-shrink: 0; }
+
+  /* ── History Modal ────────────────────────────────────────── */
+  .modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.72);
+    z-index: 2000;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal-panel {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem;
+    width: min(860px, 96vw);
+    max-height: 90vh;
+    overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+
+  .modal-header {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border);
+  }
+  .modal-title { font-family: var(--font-head); font-size: 1.05rem; font-weight: 700; color: var(--text); }
+  .modal-controls { display: flex; gap: 0.5rem; align-items: center; }
+
+  .window-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 4px; padding: 0.25rem 0.6rem; font-size: 0.72rem; font-family: var(--font-mono);
+    cursor: pointer; transition: all 0.1s;
+  }
+  .window-btn:hover  { border-color: var(--accent); color: var(--text); }
+  .window-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .view-btn {
+    background: var(--surface); border: 1px solid var(--border); color: var(--text-muted);
+    border-radius: 4px; padding: 0.25rem 0.7rem; font-size: 0.72rem; font-family: var(--font-mono);
+    cursor: pointer; transition: all 0.1s;
+  }
+  .view-btn:hover  { border-color: var(--gold); color: var(--gold); }
+  .view-btn.active { background: var(--gold); border-color: var(--gold); color: #000; font-weight: 600; }
+
+  .modal-close {
+    background: none; border: none; color: var(--text-muted); font-size: 1.3rem;
+    cursor: pointer; line-height: 1; padding: 0.2rem 0.4rem; border-radius: 3px;
+  }
+  .modal-close:hover { color: var(--text); background: var(--border); }
+
+  .stats-strip {
+    display: grid; grid-template-columns: repeat(6, 1fr);
+    gap: 0.75rem; margin-bottom: 1rem;
+  }
+  .stat-cell {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 4px;
+    padding: 0.5rem 0.6rem; text-align: center;
+  }
+  .stat-label { font-size: 0.63rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 0.2rem; }
+  .stat-value { font-size: 0.95rem; font-weight: 600; color: var(--gold); font-family: var(--font-mono); }
+  .stat-value.z-red    { color: var(--red); }
+  .stat-value.z-gold   { color: var(--gold); }
+  .stat-value.z-green  { color: var(--green); }
+  .stat-value.z-muted  { color: var(--text-muted); }
+
+  #historyChartDiv { height: 340px; width: 100%; }
+
+  .no-data-msg {
+    display: flex; align-items: center; justify-content: center;
+    height: 200px; color: var(--text-muted); font-size: 0.85rem; text-align: center;
+    flex-direction: column; gap: 0.5rem;
+  }
+  .no-data-msg .nd-icon { font-size: 1.8rem; }
+  .loading-spinner {
+    display: flex; align-items: center; justify-content: center; height: 200px;
+    color: var(--text-muted); font-size: 0.8rem; gap: 0.5rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>🔢 Göreli Değer Matrisi</h1>
+  <p>ABD ve Türkiye faiz eğrileri arası spread analizi · Z-skor · Göreli değer sinyali · Karta tıkla → tarihsel grafik</p>
+</div>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+  <span style="font-size:0.8rem; color:var(--text-muted);">🔄 5 dk. otomatik yenile</span>
+  <div style="display:flex; gap:0.75rem; align-items:center;">
+    <button class="btn btn-primary" onclick="fetchData()">▶ Yenile</button>
+    <button class="btn btn-ghost" style="font-size:0.72rem" onclick="exportRVMatrix()" title="RV Matrix verilerini Excel'e aktar">📥 Excel</button>
+    <span id="lastUpdate" style="font-size:0.75rem; color:var(--text-muted);">—</span>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; margin-bottom:1.5rem;">
+  <div class="card">
+    <div class="card-header">ABD Getiri Eğrisi</div>
+    <table class="yield-table">
+      <thead><tr><th>Vade</th><th>Getiri (%)</th></tr></thead>
+      <tbody id="usYieldsTable">
+        <tr><td colspan="2" style="text-align:center; color:var(--text-muted);">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="card">
+    <div class="card-header">Türkiye Getiri Eğrisi</div>
+    <table class="yield-table">
+      <thead><tr><th>Vade</th><th>Getiri (%)</th></tr></thead>
+      <tbody id="trYieldsTable">
+        <tr><td colspan="2" style="text-align:center; color:var(--text-muted);">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="section-header">ABD Spreads <span class="badge">252G Z-skor · karta tıkla → tarih</span></div>
+<div id="usSpreadGrid"    class="grid-wrap"><div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:2rem;">—</div></div>
+
+<div class="section-header">Türkiye Spreads</div>
+<div id="trSpreadGrid"    class="grid-wrap"><div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:2rem;">—</div></div>
+
+<div class="section-header">Çapraz Piyasa</div>
+<div id="crossSpreadGrid" class="grid-wrap"><div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:2rem;">—</div></div>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--red);"></div><span>🔴 Aşırı Genişleme (z &gt; 2)</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--gold);"></div><span>🟡 Geniş (1 &lt; z ≤ 2)</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--text-muted);"></div><span>⚪ Nötr (-1 ≤ z ≤ 1)</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--green);"></div><span>🟢 Dar (-2 ≤ z &lt; -1)</span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:#10b981;"></div><span>💚 Aşırı Daralma (z ≤ -2)</span></div>
+</div>
+
+<!-- ═══════════════════════════════════════════════════════════
+     HISTORY MODAL
+     ═══════════════════════════════════════════════════════════ -->
+<div id="historyModal" class="modal-overlay" onclick="handleOverlayClick(event)">
+  <div class="modal-panel">
+
+    <div class="modal-header">
+      <div style="display:flex; align-items:center; gap:0.75rem;">
+        <span class="modal-title" id="modalTitle">Spread Geçmişi</span>
+        <span id="modalZBadge" class="signal-badge signal-neutral" style="font-size:0.7rem;"></span>
+      </div>
+      <div class="modal-controls">
+        <button class="view-btn active" id="btnSpread" onclick="switchView('spread')">Spread</button>
+        <button class="view-btn"        id="btnZscore" onclick="switchView('zscore')">Z-Skor</button>
+        <div style="width:1px;height:16px;background:var(--border);margin:0 0.25rem;"></div>
+        <button class="window-btn"       id="w63"  onclick="changeWindow(63)">3A</button>
+        <button class="window-btn"       id="w126" onclick="changeWindow(126)">6A</button>
+        <button class="window-btn active" id="w252" onclick="changeWindow(252)">1Y</button>
+        <button class="modal-close" onclick="closeHistoryModal()">×</button>
+      </div>
+    </div>
+
+    <div class="stats-strip">
+      <div class="stat-cell"><div class="stat-label">Mevcut</div><div class="stat-value" id="sCurrent">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Ortalama</div><div class="stat-value" id="sMean">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Std Dev</div><div class="stat-value" id="sStd">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Min</div><div class="stat-value" id="sMin">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Max</div><div class="stat-value" id="sMax">—</div></div>
+      <div class="stat-cell"><div class="stat-label">Z-Skor</div><div class="stat-value" id="sZscore">—</div></div>
+    </div>
+
+    <div id="historyChartDiv"></div>
+
+  </div>
+</div>
+
+<script>
+// ── State ─────────────────────────────────────────────────────
+let _currentSpread = null;
+let _currentWindow = 252;
+let _currentView   = 'spread';
+let _historyData   = null;
+let autoRefreshInterval = null;
+
+// ── Z-score class helpers ─────────────────────────────────────
+function getZscoreClass(z) {
+  if (z === null || z === undefined) return 'z-neutral';
+  if (z > 2)   return 'z-extreme-wide';
+  if (z > 1)   return 'z-wide';
+  if (z >= -1) return 'z-neutral';
+  if (z >= -2) return 'z-tight';
+  return 'z-extreme-tight';
+}
+
+function getSignalBadgeClass(signal) {
+  if (!signal) return 'signal-neutral';
+  const m = {
+    'aşırı_genişleme': 'signal-extreme-wide',
+    'geniş':           'signal-wide',
+    'nötr':            'signal-neutral',
+    'dar':             'signal-tight',
+    'aşırı_daralma':   'signal-extreme-tight',
+  };
+  return m[signal] || 'signal-neutral';
+}
+
+function getSignalText(signal) {
+  const m = {
+    'aşırı_genişleme': 'Aşırı Genişleme 🔴',
+    'geniş':           'Geniş 🟡',
+    'nötr':            'Nötr ⚪',
+    'dar':             'Dar 🟢',
+    'aşırı_daralma':   'Aşırı Daralma 💚',
+  };
+  return m[signal] || 'N/A';
+}
+
+function zColor(z) {
+  if (z === null || z === undefined) return 'z-muted';
+  if (Math.abs(z) > 2) return z > 0 ? 'z-red'  : 'z-green';
+  if (Math.abs(z) > 1) return z > 0 ? 'z-gold' : 'z-green';
+  return 'z-muted';
+}
+
+// ── Spread card renderer ──────────────────────────────────────
+const USD_WITH_HISTORY = new Set(['2s5s','2s10s','5s10s','5s30s','10s30s']);
+
+function renderSpreadCard(spread) {
+  const cls     = getZscoreClass(spread.z_score);
+  const sigCls  = getSignalBadgeClass(spread.signal);
+  const sigTxt  = getSignalText(spread.signal);
+  const hasHist = USD_WITH_HISTORY.has(spread.name);
+  const noH     = hasHist ? '' : 'no-history';
+  const tip     = hasHist ? 'Tarihsel grafik için tıkla' : 'ABD Hazine spreadi değil — tarih yok';
+
+  let html = `
+    <div class="spread-card ${cls} ${noH}" onclick="showHistory('${spread.name}')" title="${tip}">
+      <div class="spread-name">${spread.name}</div>
+      <div class="spread-value">${spread.spread_bps.toFixed(1)} <small style="font-size:0.55em;color:var(--text-muted)">bps</small></div>`;
+
+  if (spread.z_score !== null && spread.z_score !== undefined) {
+    html += `<div class="spread-zscore">z = ${spread.z_score.toFixed(2)}</div>`;
+  }
+  if (spread.signal) {
+    html += `<span class="signal-badge ${sigCls}">${sigTxt}</span>`;
+  }
+  html += `</div>`;
+  return html;
+}
+
+// ── Main data fetch ───────────────────────────────────────────
+function fetchData() {
+  fetch('/api/rv-matrix/data')
+    .then(r => r.json())
+    .then(data => {
+      renderRVMatrix(data);
+      document.getElementById('lastUpdate').textContent =
+        'Güncelleme: ' + new Date().toLocaleTimeString('tr-TR');
+    })
+    .catch(e => console.error('RV Matrix error:', e));
+}
+
+function renderRVMatrix(data) {
+  const spreads  = data.spreads   || {};
+  const usYields = data.us_yields || {};
+  const trYields = data.tr_yields || {};
+
+  // Render yield tables
+  let usHtml = '';
+  Object.keys(usYields).sort((a,b) => (parseFloat(a)||0) - (parseFloat(b)||0))
+    .forEach(t => { usHtml += `<tr><td>${t}</td><td>${usYields[t].toFixed(2)}%</td></tr>`; });
+  document.getElementById('usYieldsTable').innerHTML =
+    usHtml || '<tr><td colspan="2" style="text-align:center;">—</td></tr>';
+
+  let trHtml = '';
+  Object.keys(trYields).sort((a,b) => (parseFloat(a)||0) - (parseFloat(b)||0))
+    .forEach(t => { trHtml += `<tr><td>${t}</td><td>${trYields[t].toFixed(2)}%</td></tr>`; });
+  document.getElementById('trYieldsTable').innerHTML =
+    trHtml || '<tr><td colspan="2" style="text-align:center;">—</td></tr>';
+
+  // Render spread grids
+  const empty = '<div style="grid-column:1/-1;text-align:center;color:var(--text-muted);padding:2rem;">Veri yüklenmek üzere...</div>';
+  const arr   = Array.isArray(spreads) ? spreads : [];
+
+  const usSp    = arr.filter(s => s.market === 'USD');
+  const trSp    = arr.filter(s => s.market === 'TRY');
+  const crossSp = arr.filter(s => s.market === 'Çapraz');
+
+  document.getElementById('usSpreadGrid').innerHTML    = usSp.length    ? usSp.map(renderSpreadCard).join('')    : empty;
+  document.getElementById('trSpreadGrid').innerHTML    = trSp.length    ? trSp.map(renderSpreadCard).join('')    : empty;
+  document.getElementById('crossSpreadGrid').innerHTML = crossSp.length ? crossSp.map(renderSpreadCard).join('') : empty;
+}
+
+// ── History modal ─────────────────────────────────────────────
+function showHistory(spreadName) {
+  _currentSpread = spreadName;
+  _currentView   = 'spread';
+  _historyData   = null;
+
+  document.getElementById('modalTitle').textContent = spreadName + ' — Geçmiş';
+  document.getElementById('modalZBadge').textContent = '';
+  document.getElementById('modalZBadge').className   = 'signal-badge signal-neutral';
+  document.getElementById('historyChartDiv').innerHTML =
+    '<div class="loading-spinner">⏳ Yükleniyor...</div>';
+
+  // Reset buttons
+  document.getElementById('btnSpread').classList.add('active');
+  document.getElementById('btnZscore').classList.remove('active');
+  setWindowActive(_currentWindow);
+
+  document.getElementById('historyModal').classList.add('open');
+  document.body.style.overflow = 'hidden';
+
+  loadHistory();
+}
+
+function loadHistory() {
+  if (!_currentSpread) return;
+  document.getElementById('historyChartDiv').innerHTML =
+    '<div class="loading-spinner">⏳ Yükleniyor...</div>';
+
+  fetch(`/api/rv-matrix/history/${encodeURIComponent(_currentSpread)}?window=${_currentWindow}`)
+    .then(r => r.json())
+    .then(data => {
+      _historyData = data;
+      renderHistoryUI(data);
+    })
+    .catch(e => {
+      document.getElementById('historyChartDiv').innerHTML =
+        `<div class="no-data-msg"><span class="nd-icon">⚠️</span>Veri alınamadı: ${e.message}</div>`;
+    });
+}
+
+function renderHistoryUI(data) {
+  const statIds = ['sCurrent','sMean','sStd','sMin','sMax','sZscore'];
+
+  if (!data.has_data) {
+    document.getElementById('historyChartDiv').innerHTML = `
+      <div class="no-data-msg">
+        <span class="nd-icon">📊</span>
+        <div>${data.reason || 'Bu spread için tarihsel veri mevcut değil.'}</div>
+        <div style="font-size:0.72rem;color:var(--text-muted);margin-top:0.5rem;">
+          Tarihsel grafik yalnızca ABD Hazine spreadslarında (2s5s, 2s10s, 5s10s, 5s30s, 10s30s) mevcuttur.
+        </div>
+      </div>`;
+    statIds.forEach(id => {
+      const el = document.getElementById(id);
+      el.textContent = '—';
+      el.className   = 'stat-value z-muted';
+    });
+    return;
+  }
+
+  // Stats strip
+  document.getElementById('sCurrent').textContent = data.current_bps !== null ? data.current_bps.toFixed(1) + ' bps' : '—';
+  document.getElementById('sMean').textContent    = data.mean  !== null ? data.mean.toFixed(1)  + ' bps' : '—';
+  document.getElementById('sStd').textContent     = data.std   !== null ? data.std.toFixed(1)   + ' bps' : '—';
+  document.getElementById('sMin').textContent     = data.min   !== null ? data.min.toFixed(1)   + ' bps' : '—';
+  document.getElementById('sMax').textContent     = data.max   !== null ? data.max.toFixed(1)   + ' bps' : '—';
+
+  const zEl = document.getElementById('sZscore');
+  if (data.current_z !== null && data.current_z !== undefined) {
+    zEl.textContent = data.current_z.toFixed(2);
+    zEl.className   = 'stat-value ' + zColor(data.current_z);
+
+    // Update modal z badge
+    const zBadge = document.getElementById('modalZBadge');
+    const zCls   = getZscoreClass(data.current_z);
+    const sigMap  = {
+      'z-extreme-wide':  'signal-extreme-wide',
+      'z-wide':          'signal-wide',
+      'z-neutral':       'signal-neutral',
+      'z-tight':         'signal-tight',
+      'z-extreme-tight': 'signal-extreme-tight',
+    };
+    zBadge.textContent = 'z = ' + data.current_z.toFixed(2);
+    zBadge.className   = 'signal-badge ' + (sigMap[zCls] || 'signal-neutral');
+  } else {
+    zEl.textContent = '—';
+    zEl.className   = 'stat-value z-muted';
+  }
+
+  if (_currentView === 'spread') renderSpreadChart(data);
+  else                           renderZscoreChart(data);
+}
+
+// ── Plotly spread chart (bands + rolling mean + series) ───────
+function renderSpreadChart(data) {
+  const traces = [
+    // ±2σ outer band — fill between upper and lower via tonexty
+    {
+      name: '+2σ', x: data.dates, y: data.upper_2s,
+      mode: 'lines', hoverinfo: 'skip', showlegend: true,
+      line: { color: 'rgba(239,68,68,0.3)', width: 1, dash: 'dot' },
+      legendgroup: 'sigma2',
+    },
+    {
+      name: '−2σ', x: data.dates, y: data.lower_2s,
+      mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(239,68,68,0.08)',
+      hoverinfo: 'skip', showlegend: false,
+      line: { color: 'rgba(239,68,68,0.3)', width: 1, dash: 'dot' },
+      legendgroup: 'sigma2',
+    },
+    // ±1σ inner band
+    {
+      name: '+1σ', x: data.dates, y: data.upper_1s,
+      mode: 'lines', hoverinfo: 'skip', showlegend: true,
+      line: { color: 'rgba(245,158,11,0.4)', width: 1, dash: 'dot' },
+      legendgroup: 'sigma1',
+    },
+    {
+      name: '−1σ', x: data.dates, y: data.lower_1s,
+      mode: 'lines', fill: 'tonexty', fillcolor: 'rgba(245,158,11,0.10)',
+      hoverinfo: 'skip', showlegend: false,
+      line: { color: 'rgba(245,158,11,0.4)', width: 1, dash: 'dot' },
+      legendgroup: 'sigma1',
+    },
+    // Rolling mean
+    {
+      name: 'Kayan Ort.', x: data.dates, y: data.rolling_mean,
+      mode: 'lines', line: { color: 'rgba(148,163,184,0.75)', width: 1.5, dash: 'dash' },
+      hovertemplate: 'Ort: %{y:.1f} bps<extra></extra>',
+    },
+    // Spread line
+    {
+      name: data.spread_name, x: data.dates, y: data.spread_bps,
+      mode: 'lines', line: { color: '#f59e0b', width: 2.5 },
+      hovertemplate: '%{y:.1f} bps<extra></extra>',
+    },
+    // Current value marker
+    {
+      name: 'Mevcut',
+      x: [data.dates[data.dates.length - 1]],
+      y: [data.current_bps],
+      mode: 'markers',
+      marker: { color: '#ef4444', size: 9, symbol: 'circle',
+                line: { color: '#fff', width: 1.5 } },
+      hovertemplate: 'Mevcut: %{y:.1f} bps<extra></extra>',
+    },
+  ];
+
+  const layout = _baseLayout(data.spread_name + ' — ' + _currentWindow + 'G Kayan Pencere', 'bps');
+  Plotly.newPlot('historyChartDiv', traces, layout, _config());
+}
+
+// ── Plotly z-score chart ──────────────────────────────────────
+function renderZscoreChart(data) {
+  const traces = [
+    // Z-score series
+    {
+      name: 'Z-Skor', x: data.dates, y: data.z_scores,
+      mode: 'lines', line: { color: '#f59e0b', width: 2.5 },
+      hovertemplate: 'z = %{y:.2f}<extra></extra>',
+    },
+    // Current z marker
+    {
+      name: 'Mevcut',
+      x: [data.dates[data.dates.length - 1]],
+      y: [data.current_z],
+      mode: 'markers',
+      marker: { color: '#ef4444', size: 9, symbol: 'circle',
+                line: { color: '#fff', width: 1.5 } },
+      hovertemplate: 'Mevcut z: %{y:.2f}<extra></extra>',
+    },
+  ];
+
+  const layout = _baseLayout(data.spread_name + ' Z-Skor — ' + _currentWindow + 'G', 'z-skor');
+
+  // Reference lines via shapes + annotations
+  layout.shapes = [
+    _hline( 2,  'rgba(239,68,68,0.55)'),
+    _hline( 1,  'rgba(245,158,11,0.45)'),
+    _hline( 0,  'rgba(100,116,139,0.35)'),
+    _hline(-1,  'rgba(16,185,129,0.45)'),
+    _hline(-2,  'rgba(16,185,129,0.55)'),
+  ];
+  layout.annotations = [
+    _hann( 2.05, '+2σ', 'rgba(239,68,68,0.8)'),
+    _hann( 1.05, '+1σ', 'rgba(245,158,11,0.8)'),
+    _hann(-0.95, '−1σ', 'rgba(16,185,129,0.8)'),
+    _hann(-1.95, '−2σ', 'rgba(16,185,129,0.8)'),
+  ];
+
+  // Colour-fill zones
+  layout.shapes.push(
+    { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: 2,   y1: 10,
+      fillcolor: 'rgba(239,68,68,0.05)', line: { width: 0 } },
+    { type: 'rect', xref: 'paper', yref: 'y', x0: 0, x1: 1, y0: -10, y1: -2,
+      fillcolor: 'rgba(16,185,129,0.05)', line: { width: 0 } }
+  );
+
+  Plotly.newPlot('historyChartDiv', traces, layout, _config());
+}
+
+// ── Plotly layout/config helpers ──────────────────────────────
+function _baseLayout(titleText, yLabel) {
+  return {
+    paper_bgcolor: 'transparent',
+    plot_bgcolor:  'rgba(14,16,23,0.6)',
+    font:   { color: '#e2e8f0', family: 'DM Mono, monospace', size: 11 },
+    margin: { l: 54, r: 24, t: 18, b: 52 },
+    xaxis: {
+      gridcolor: '#1e2233', tickcolor: '#64748b', linecolor: '#1e2233',
+      tickfont: { size: 10 }, tickformat: '%b %Y', nticks: 8,
+    },
+    yaxis: {
+      title: { text: yLabel, font: { size: 10 } },
+      gridcolor: '#1e2233', tickcolor: '#64748b', linecolor: '#1e2233',
+      tickfont: { size: 10 },
+      zeroline: true, zerolinecolor: 'rgba(100,116,139,0.3)', zerolinewidth: 1,
+    },
+    legend: {
+      bgcolor: 'transparent', font: { size: 10 },
+      orientation: 'h', x: 0, y: -0.22,
+    },
+    hovermode: 'x unified',
+    hoverlabel: {
+      bgcolor: '#13151e', bordercolor: '#1e2233',
+      font: { family: 'DM Mono, monospace', size: 11 },
+    },
+  };
+}
+
+function _config() {
+  return {
+    responsive: true,
+    displayModeBar: true,
+    displaylogo: false,
+    modeBarButtonsToRemove: ['lasso2d','select2d'],
+  };
+}
+
+function _hline(y, color) {
+  return {
+    type: 'line', xref: 'paper', yref: 'y',
+    x0: 0, x1: 1, y0: y, y1: y,
+    line: { color, width: 1, dash: 'dash' },
+  };
+}
+
+function _hann(y, text, color) {
+  return {
+    xref: 'paper', yref: 'y', x: 1.01, y,
+    text, showarrow: false, xanchor: 'left',
+    font: { size: 9, color },
+  };
+}
+
+// ── Modal controls ────────────────────────────────────────────
+function changeWindow(w) {
+  _currentWindow = w;
+  setWindowActive(w);
+  if (_currentSpread) loadHistory();
+}
+
+function setWindowActive(w) {
+  [63, 126, 252].forEach(x => {
+    document.getElementById('w' + x).classList.toggle('active', x === w);
+  });
+}
+
+function switchView(view) {
+  _currentView = view;
+  document.getElementById('btnSpread').classList.toggle('active', view === 'spread');
+  document.getElementById('btnZscore').classList.toggle('active', view === 'zscore');
+  if (_historyData && _historyData.has_data) {
+    if (view === 'spread') renderSpreadChart(_historyData);
+    else                   renderZscoreChart(_historyData);
+  }
+}
+
+function closeHistoryModal() {
+  document.getElementById('historyModal').classList.remove('open');
+  document.body.style.overflow = '';
+  _currentSpread = null;
+  _historyData   = null;
+  Plotly.purge('historyChartDiv');
+}
+
+function handleOverlayClick(event) {
+  if (event.target === document.getElementById('historyModal')) {
+    closeHistoryModal();
+  }
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeHistoryModal();
+});
+
+// ── Auto-refresh ──────────────────────────────────────────────
+function startAutoRefresh() {
+  if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+  autoRefreshInterval = setInterval(fetchData, 300000);
+}
+
+window.addEventListener('load', () => {
+  fetchData();
+  startAutoRefresh();
+});
+
+async function exportRVMatrix() {
+  try {
+    const resp = await fetch('/api/export/rv-matrix');
+    if (!resp.ok) { const e = await resp.json(); throw new Error(e.error || 'Export hatası'); }
+    const blob = await resp.blob();
+    const fname = (resp.headers.get('Content-Disposition') || '').match(/filename="?([^"]+)"?/)?.[1] || 'rv_matrix.xlsx';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fname;
+    a.click();
+  } catch(e) {
+    alert('Export hatası: ' + e.message);
+  }
+}
+</script>
+{% endblock %}

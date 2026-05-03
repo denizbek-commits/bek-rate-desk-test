@@ -1,0 +1,270 @@
+{% extends 'base.html' %}
+{% block title %}Monte Carlo — Bek Rate Desk{% endblock %}
+{% block extra_css %}
+.tabs{display:flex;gap:0;border-bottom:1px solid var(--border);margin-bottom:1.25rem;}
+.tab-btn{padding:0.45rem 1.1rem;font-size:0.72rem;font-family:var(--font-mono);color:var(--text-muted);border-bottom:2px solid transparent;cursor:pointer;transition:all 0.15s;}
+.tab-btn.active{color:var(--text);border-bottom-color:var(--accent);}
+.layout{display:grid;grid-template-columns:280px 1fr;gap:1rem;align-items:start;}
+.chart-box{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:0.5rem;}
+.af{display:grid;grid-template-columns:1fr 1fr;gap:0.4rem;}
+.af .full{grid-column:span 2;}
+/* Stress grid heatmap */
+.sg-wrap{overflow-x:auto;}
+.sg-table{border-collapse:collapse;font-size:0.65rem;font-family:var(--font-mono);}
+.sg-table th{padding:0.3rem 0.5rem;color:var(--text-muted);font-weight:400;font-size:0.6rem;text-align:center;border-bottom:1px solid var(--border);}
+.sg-table td{padding:0.25rem 0.45rem;text-align:center;border:1px solid var(--border-soft);border-radius:2px;min-width:70px;}
+.sg-row-label{color:var(--text-muted);font-weight:400;text-align:right;padding-right:0.5rem;white-space:nowrap;}
+{% endblock %}
+
+{% block content %}
+<div class="page-header">
+  <h1>Monte Carlo Simulation</h1>
+  <p>Probability-weighted NII outcomes via Vasicek rate model — VaR, CVaR, fan chart, stress grid</p>
+</div>
+
+<div class="tabs">
+  <div class="tab-btn active" id="tab-mc"   onclick="sw('mc')">Monte Carlo NII</div>
+  <div class="tab-btn"        id="tab-grid" onclick="sw('grid')">Stress Grid</div>
+</div>
+
+<!-- ══ MONTE CARLO ══ -->
+<div id="panel-mc">
+<div class="layout">
+  <div style="display:flex;flex-direction:column;gap:0.75rem">
+    <div class="card">
+      <div class="card-title">Vasicek Model Parameters</div>
+      <div class="af">
+        <div class="form-group"><label class="form-label">r₀ — Current Rate (%)</label><input class="form-input" id="mcR0" type="number" step="0.25" value="45.0" title="Current short rate (e.g. TCMB)"/></div>
+        <div class="form-group"><label class="form-label">θ — Long-run Rate (%)</label><input class="form-input" id="mcTheta" type="number" step="0.25" value="35.0" title="Long-run equilibrium rate"/></div>
+        <div class="form-group"><label class="form-label">κ — Mean Reversion</label><input class="form-input" id="mcKappa" type="number" step="0.01" value="0.30" title="Speed of reversion to theta (0=no reversion, 1=fast)"/></div>
+        <div class="form-group"><label class="form-label">σ — Rate Vol (%)</label><input class="form-input" id="mcSigma" type="number" step="0.1" value="5.0" title="Annualised rate volatility %"/></div>
+        <div class="form-group"><label class="form-label">Horizon (months)</label><input class="form-input" id="mcHorizon" type="number" value="12"/></div>
+        <div class="form-group"><label class="form-label">N Paths</label>
+          <select class="form-select" id="mcPaths"><option value="500">500 (fast)</option><option value="1000" selected>1,000</option><option value="2000">2,000</option><option value="5000">5,000 (slow)</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Confidence Level</label>
+          <select class="form-select" id="mcConf"><option value="0.90">90%</option><option value="0.95" selected>95%</option><option value="0.99">99%</option></select>
+        </div>
+        <div class="form-group"><label class="form-label">Seed (reproducibility)</label><input class="form-input" id="mcSeed" type="number" value="42"/></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title" style="font-size:0.7rem">Balance Sheet</div>
+      <div style="font-size:0.68rem;color:var(--text-muted);margin-bottom:0.5rem">Liabilities can include <code>beta</code> field (0–1) for deposit beta adjustment.</div>
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.35rem">
+        <button class="btn btn-ghost" style="flex:1;font-size:0.68rem;color:var(--gold)" onclick="loadMCFromSession()">📋 Oturumdan Yükle</button>
+        <button class="btn btn-ghost" style="flex:1;font-size:0.68rem" onclick="loadMCSample()">Örnek Yükle</button>
+      </div>
+      <div id="mcBSStatus" style="font-size:0.65rem;color:var(--text-muted);margin-top:0.4rem">No balance sheet loaded</div>
+    </div>
+    <button class="btn btn-primary w-full" onclick="runMC()">▶ Run Monte Carlo (1,000 paths)</button>
+  </div>
+  <div id="mcResults">
+    <div class="coming-soon"><div class="coming-soon-icon">🎲</div><h2>Monte Carlo NII</h2>
+    <p>Load sample balance sheet, configure Vasicek parameters, and run simulation. Returns NII distribution, VaR, CVaR, and fan chart.</p></div>
+  </div>
+</div>
+</div>
+
+<!-- ══ STRESS GRID ══ -->
+<div id="panel-grid" style="display:none">
+<div style="display:flex;flex-direction:column;gap:1rem">
+  <div class="card">
+    <div class="flex-between">
+      <div class="card-title" style="margin:0">2D Stress Grid — Level × Slope Shocks</div>
+      <div class="flex-center gap-sm">
+        <button class="btn btn-ghost" onclick="loadGridSample()">Load Sample</button>
+        <button class="btn btn-primary" onclick="runGrid()">▶ Run Stress Grid</button>
+      </div>
+    </div>
+    <div style="font-size:0.68rem;color:var(--text-muted);margin-top:0.5rem">Rows = parallel shift (−200 to +200bps). Columns = steepening/flattening (−150 to +150bps). Cell = ΔNII vs base.</div>
+  </div>
+  <div id="gridResults"><div class="coming-soon"><div class="coming-soon-icon">📊</div><h2>Stress Grid</h2><p>Classic ALM stress test table showing NII across all combinations of rate level and curve shape shocks.</p></div></div>
+</div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+let mcAssets=[], mcLiabs=[], gridAssets=[], gridLiabs=[];
+
+function sw(t){
+  ['mc','grid'].forEach(id=>{
+    document.getElementById('panel-'+id).style.display=t===id?'':'none';
+    document.getElementById('tab-'+id).classList.toggle('active',t===id);
+  });
+}
+
+const SAMPLE_BS = {
+  assets:[
+    {name:'Floating Rate Loans',amount:2000,rate:47.5,repricing_months:1, type:'floating'},
+    {name:'Fixed Corp Loans',   amount:1200,rate:44.0,repricing_months:12,type:'fixed'},
+    {name:'Gov Bonds',          amount:900, rate:38.5,repricing_months:36,type:'fixed'},
+    {name:'TLREF Loans',        amount:500, rate:46.0,repricing_months:1, type:'floating'},
+    {name:'Mortgages',          amount:300, rate:35.0,repricing_months:60,type:'fixed'},
+  ],
+  liabilities:[
+    {name:'Demand Deposits',  amount:1500,rate:15.0,repricing_months:1, type:'floating',beta:0.20},
+    {name:'Time Deposits 3M', amount:1900,rate:42.0,repricing_months:3, type:'fixed',   beta:0.80},
+    {name:'Time Deposits 6M', amount:600, rate:40.0,repricing_months:6, type:'fixed',   beta:0.70},
+    {name:'Wholesale Funding',amount:400, rate:44.0,repricing_months:12,type:'fixed',   beta:0.90},
+    {name:'Subordinated Debt',amount:200, rate:50.0,repricing_months:60,type:'fixed',   beta:0.95},
+  ]
+};
+
+function loadMCSample(){
+  mcAssets=[...SAMPLE_BS.assets]; mcLiabs=[...SAMPLE_BS.liabilities];
+  document.getElementById('mcBSStatus').innerHTML='<span style="color:var(--green)">✓ Loaded — 5 assets / 5 liabilities with deposit betas</span>';
+}
+function loadGridSample(){gridAssets=[...SAMPLE_BS.assets];gridLiabs=[...SAMPLE_BS.liabilities];}
+
+async function loadMCFromSession() {
+  try {
+    const r = await fetch('/api/session/balance-sheet');
+    const d = await r.json();
+    if (!d.has_session) { alert('Kayıtlı aktif oturum yok. Önce Balance Sheet sayfasına gidin.'); return; }
+    mcAssets  = d.assets      || [];
+    mcLiabs   = d.liabilities || [];
+    gridAssets = [...mcAssets];
+    gridLiabs  = [...mcLiabs];
+    document.getElementById('mcBSStatus').innerHTML =
+      `<span style="color:var(--gold)">📋 Oturumdan yüklendi — ${mcAssets.length} aktif / ${mcLiabs.length} pasif</span>`;
+  } catch(e) { alert('Hata: ' + e.message); }
+}
+
+async function runMC(){
+  if(!mcAssets.length){alert('Load sample balance sheet first.');return;}
+  const n=parseInt(document.getElementById('mcPaths').value);
+  document.getElementById('mcResults').innerHTML=`<div class="loading"><div class="spinner"></div> Simulating ${n.toLocaleString()} Vasicek rate paths...</div>`;
+  try{
+    const r=await fetch('/api/monte-carlo/simulate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      assets:mcAssets,liabilities:mcLiabs,
+      n_paths:n,horizon_months:parseInt(document.getElementById('mcHorizon').value),
+      r0:parseFloat(document.getElementById('mcR0').value),
+      theta:parseFloat(document.getElementById('mcTheta').value),
+      kappa:parseFloat(document.getElementById('mcKappa').value),
+      sigma:parseFloat(document.getElementById('mcSigma').value),
+      seed:parseInt(document.getElementById('mcSeed').value),
+      confidence:parseFloat(document.getElementById('mcConf').value),
+    })});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderMC(d);
+  }catch(e){document.getElementById('mcResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderMC(d){
+  const conf_pct=Math.round(d.confidence*100);
+  const pcts=d.percentiles;
+  const hist=d.histogram;
+  const fan=d.fan_chart;
+
+  document.getElementById('mcResults').innerHTML=`
+    <div class="kpi-strip">
+      <div class="stat-box"><div class="stat-label">Mean NII</div><div class="stat-value">${fmt(d.mean_nii)}M</div><div class="stat-sub">Expected outcome</div></div>
+      <div class="stat-box"><div class="stat-label">Median NII</div><div class="stat-value">${fmt(d.median_nii)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Std Dev</div><div class="stat-value">${fmt(d.std_nii)}M</div><div class="stat-sub">NII uncertainty</div></div>
+      <div class="stat-box"><div class="stat-label">NII-at-Risk (${conf_pct}%)</div><div class="stat-value negative">${fmt(d.var_nii)}M</div><div class="stat-sub">VaR — worst ${100-conf_pct}%</div></div>
+      <div class="stat-box"><div class="stat-label">Expected Shortfall</div><div class="stat-value negative">${fmt(d.cvar_nii)}M</div><div class="stat-sub">CVaR — avg of tail losses</div></div>
+      <div class="stat-box"><div class="stat-label">Range</div><div class="stat-value">${fmt(d.min_nii)} — ${fmt(d.max_nii)}M</div><div class="stat-sub">${d.n_paths.toLocaleString()} paths</div></div>
+    </div>
+
+    <!-- Percentile table -->
+    <div class="card mb-2">
+      <div class="card-title">NII Percentile Distribution</div>
+      <div style="display:grid;grid-template-columns:repeat(9,1fr);gap:0.4rem;margin-top:0.25rem">
+        ${Object.entries(pcts).map(([k,v])=>`<div style="text-align:center;background:var(--surface);border:1px solid var(--border);border-radius:4px;padding:0.4rem 0.2rem">
+          <div style="font-size:0.58rem;color:var(--text-muted);text-transform:uppercase">${k}</div>
+          <div style="font-size:0.8rem;font-weight:500;font-family:var(--font-mono);color:${v<d.var_nii?'var(--red)':v<d.mean_nii?'var(--text-dim)':'var(--green)'}">${fmt(v)}M</div>
+        </div>`).join('')}
+      </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid-2 mb-2">
+      <div class="card"><div class="card-title">NII Distribution (${d.n_paths.toLocaleString()} paths)</div><div class="chart-box" id="chartHist" style="height:220px"></div></div>
+      <div class="card"><div class="card-title">Rate Fan Chart (Vasicek paths)</div><div class="chart-box" id="chartFan" style="height:220px"></div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Sample Rate Paths (20 of ${d.n_paths.toLocaleString()})</div>
+      <div class="chart-box" id="chartPaths" style="height:180px"></div>
+    </div>`;
+
+  // Histogram
+  const hx=hist.map(b=>`${b.bin_left.toFixed(0)}–${b.bin_right.toFixed(0)}`);
+  const hy=hist.map(b=>b.count);
+  const hc=hist.map(b=>b.bin_right<=d.var_nii?'#ef4444':'#2563eb');
+  Plotly.newPlot('chartHist',[{type:'bar',x:hx,y:hy,marker:{color:hc},name:'Count'}],{...baseLayout('Count'),xaxis:{gridcolor:'#1e2233',tickfont:{size:7},tickangle:-45},annotations:[{x:d.var_nii,y:Math.max(...hy)*0.8,text:`VaR ${fmt(d.var_nii)}M`,showarrow:true,arrowcolor:'#ef4444',font:{size:9,color:'#ef4444'}}]},{displayModeBar:false,responsive:true});
+
+  // Fan chart
+  const months=fan.map(f=>f.month);
+  Plotly.newPlot('chartFan',[
+    {type:'scatter',x:[...months,...months.reverse()],y:[...fan.map(f=>f.p95),...fan.map(f=>f.p5).reverse()],fill:'toself',fillcolor:'rgba(37,99,235,0.08)',line:{color:'transparent'},name:'P5–P95'},
+    {type:'scatter',x:months,y:fan.map(f=>f.p50),mode:'lines',line:{color:'#2563eb',width:2},name:'Median'},
+    {type:'scatter',x:months,y:fan.map(f=>f.p25),mode:'lines',line:{color:'#2563eb',width:1,dash:'dot'},name:'P25'},
+    {type:'scatter',x:months,y:fan.map(f=>f.p75),mode:'lines',line:{color:'#2563eb',width:1,dash:'dot'},name:'P75',showlegend:false},
+  ],{...baseLayout('Rate (%)'),legend:{font:{size:8},bgcolor:'transparent'}},{displayModeBar:false,responsive:true});
+
+  // Sample paths
+  const pathTraces=d.sample_paths.map(p=>({type:'scatter',x:Array.from({length:p.rate_path.length},(_,i)=>i),y:p.rate_path,mode:'lines',line:{width:0.7,color:`rgba(100,116,139,0.4)`},showlegend:false}));
+  Plotly.newPlot('chartPaths',pathTraces,{...baseLayout('Rate (%)'),margin:{t:5,b:30,l:45,r:10}},{displayModeBar:false,responsive:true});
+}
+
+// ── STRESS GRID ────────────────────────────────────────────────────────────
+async function runGrid(){
+  if(!gridAssets.length){alert('Load sample first.');return;}
+  document.getElementById('gridResults').innerHTML='<div class="loading"><div class="spinner"></div> Computing 63-cell stress grid...</div>';
+  try{
+    const r=await fetch('/api/monte-carlo/stress-grid',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({assets:gridAssets,liabilities:gridLiabs})});
+    const d=await r.json(); if(d.error)throw new Error(d.error);
+    renderGrid(d);
+  }catch(e){document.getElementById('gridResults').innerHTML=`<div class="coming-soon"><div class="coming-soon-icon">⚠️</div><p>${e.message}</p></div>`;}
+}
+
+function renderGrid(d){
+  const par=d.parallel_shocks, slopes=d.slope_shocks;
+  const allDeltas=d.grid.flat().map(c=>c.delta_nii);
+  const maxAbs=Math.max(...allDeltas.map(v=>Math.abs(v)),1);
+
+  function cellColor(v){
+    const intensity=Math.min(Math.abs(v)/maxAbs,1);
+    if(v>0) return `rgba(16,185,129,${0.15+intensity*0.65})`;
+    return `rgba(239,68,68,${0.15+intensity*0.65})`;
+  }
+
+  const headerCols=slopes.map(s=>`<th>${s>=0?'+':''}${s}bps<br/><span style="font-weight:300;font-size:0.55rem">${s>0?'Steep':s<0?'Flat':'Neutral'}</span></th>`).join('');
+  const bodyRows=d.grid.map((row,ri)=>{
+    const cells=row.map(cell=>{
+      const color=cellColor(cell.delta_nii);
+      const tc=Math.abs(cell.delta_nii)/maxAbs>0.5?'#fff':'var(--text)';
+      return `<td style="background:${color};color:${tc}">${cell.delta_nii>=0?'+':''}${cell.delta_nii.toFixed(1)}</td>`;
+    }).join('');
+    return `<tr><td class="sg-row-label">${par[ri]>=0?'+':''}${par[ri]}bps</td>${cells}</tr>`;
+  }).join('');
+
+  document.getElementById('gridResults').innerHTML=`
+    <div class="kpi-strip mb-2">
+      <div class="stat-box"><div class="stat-label">Base NII</div><div class="stat-value">${fmt(d.base_nii)}M</div></div>
+      <div class="stat-box"><div class="stat-label">Best Cell</div><div class="stat-value positive">+${fmt(Math.max(...allDeltas))}M</div></div>
+      <div class="stat-box"><div class="stat-label">Worst Cell</div><div class="stat-value negative">${fmt(Math.min(...allDeltas))}M</div></div>
+      <div class="stat-box"><div class="stat-label">Grid Size</div><div class="stat-value">${par.length}×${slopes.length}</div><div class="stat-sub">${par.length*slopes.length} scenarios</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">ΔNII Stress Grid (rows=parallel shift, cols=slope shock)</div>
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-bottom:0.75rem">
+        Values in M. Green=NII improves, Red=NII deteriorates vs base of ${fmt(d.base_nii)}M.
+        Slope: positive=steepening, negative=flattening.
+      </div>
+      <div class="sg-wrap">
+        <table class="sg-table">
+          <thead><tr><th style="text-align:right">Parallel↓ / Slope→</th>${headerCols}</tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    </div>`;
+}
+
+function baseLayout(y){return{paper_bgcolor:'transparent',plot_bgcolor:'transparent',margin:{t:5,b:40,l:50,r:10},font:{family:'DM Mono',size:9,color:'#64748b'},xaxis:{gridcolor:'#1e2233'},yaxis:{gridcolor:'#1e2233',title:{text:y,font:{size:9}}}};}
+function fmt(v){if(v===null||v===undefined||isNaN(v))return'—';return parseFloat(v).toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:1});}
+</script>
+{% endblock %}
