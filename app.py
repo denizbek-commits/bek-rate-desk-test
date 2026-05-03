@@ -23,8 +23,8 @@ app.config['SECRET_KEY']    = 'bek-rate-desk-2025'
 app.config['UPLOAD_FOLDER'] = os.path.join(SCRIPT_DIR, 'static', 'downloads')
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-EXPECTED_USER = os.environ.get('TRADING_APP_USER', 'deniz')
-EXPECTED_PASS = os.environ.get('TRADING_APP_PASS', '123963')
+EXPECTED_USER = os.environ.get('TRADING_APP_USER') or ''
+EXPECTED_PASS = os.environ.get('TRADING_APP_PASS') or ''
 
 def _unauthorized():
     return Response('Unauthorized', 401, {'WWW-Authenticate': 'Basic realm="Bek Rate Desk"'})

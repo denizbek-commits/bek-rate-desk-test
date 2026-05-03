@@ -45,7 +45,7 @@ FRED_TR_PROXIES = {
     "cds_5y": "DDDGTXQ3A066NBIS",  # Türkiye 5Y CDS FRED
 }
 
-FRED_API_KEY = "dfe19785bb3b852bce75e193315b51da"
+FRED_API_KEY = os.environ.get("FRED_API_KEY", "")
 FRED_BASE    = "https://api.stlouisfed.org/fred/series/observations"
 
 

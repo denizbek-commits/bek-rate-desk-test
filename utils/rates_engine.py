@@ -15,7 +15,7 @@ from typing import Optional
 from utils.io_utils import _atomic_json_write
 from utils.api_cache import ttl_cache, invalidate_all as _cache_invalidate_all
 
-_FRED_DEFAULT_KEY = "dfe19785bb3b852bce75e193315b51da"
+_FRED_DEFAULT_KEY = os.environ.get("FRED_API_KEY", "")
 FRED_BASE         = "https://api.stlouisfed.org/fred/series/observations"
 
 CONFIG_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -411,7 +411,7 @@ def _nelson_siegel_fit(tenors_years: dict, rates: dict) -> dict:
 #   TR 2Y govt bond         → yfinance: ^TRY2YT=RR (not always available)
 #   USD/TRY                 → exchangerate-api / open.er-api
 
-TCMB_EVDS_KEY  = "aKPzzvHYCI"   # your EVDS key
+TCMB_EVDS_KEY  = os.environ.get("TCMB_EVDS_KEY", "")   # set in .env
 TCMB_EVDS_BASE = "https://evds2.tcmb.gov.tr/service/evds"
 
 # TCMB EVDS seri kodları
